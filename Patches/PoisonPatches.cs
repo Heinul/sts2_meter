@@ -129,13 +129,20 @@ public static class PoisonPatches
                     ModEntry.LogDebug(
                         $"[DamageMeter] 독 적용: {_lastActingPlayerName} → {monsterName} +{diff} 스택");
                 }
-                else if (diff < 0)
+                else if (diff == -1)
                 {
-                    // 독 스택 감소 → 독 틱 데미지 (감소분 = 데미지)
-                    int poisonDamage = Math.Abs(diff);
+                    // 독 스택 1 감소 = 틱 → 데미지는 감소 전 스택 수 (oldAmount)
+                    // 예: 43스택 → 43데미지 → 42스택 → 42데미지 → ...
+                    int poisonDamage = oldAmount;
                     DamageTracker.Instance.RecordPoisonDamageTick(monsterKey, monsterName, poisonDamage);
                     ModEntry.LogDebug(
-                        $"[DamageMeter] 독 틱: {monsterName} -{poisonDamage} (비율 귀속)");
+                        $"[DamageMeter] 독 틱: {monsterName} {poisonDamage}뎀 (잔여 {newAmount}스택, 비율 귀속)");
+                }
+                else if (diff < -1)
+                {
+                    // 2 이상 감소 = 해독/제거 (데미지 아님, 무시)
+                    ModEntry.LogDebug(
+                        $"[DamageMeter] 독 제거: {monsterName} {oldAmount}→{newAmount} (해독)");
                 }
             }
             catch (Exception ex)
