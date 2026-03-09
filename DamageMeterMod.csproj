@@ -1,0 +1,52 @@
+<Project Sdk="Godot.NET.Sdk/4.5.1">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>DamageMeterMod</RootNamespace>
+    <AssemblyName>DamageMeterMod</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
+    <!--
+      게임 설치 경로 설정.
+      환경 변수 또는 아래 기본값을 사용합니다.
+      환경 변수 STS2_GAME_PATH가 설정되어 있으면 우선 사용됩니다.
+    -->
+    <STS2GamePath Condition="'$(STS2_GAME_PATH)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2</STS2GamePath>
+    <STS2GamePath Condition="'$(STS2_GAME_PATH)' != ''">$(STS2_GAME_PATH)</STS2GamePath>
+    <STS2DataPath>$(STS2GamePath)\data_sts2_windows_x86_64</STS2DataPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Godot engine reference -->
+    <Reference Include="GodotSharp">
+      <HintPath>$(STS2DataPath)\GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Game core assembly -->
+    <Reference Include="sts2">
+      <HintPath>$(STS2DataPath)\sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- HarmonyLib (게임에 0Harmony 2.4.2 내장, 호환 버전 사용) -->
+    <Reference Include="0Harmony">
+      <HintPath>$(STS2DataPath)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- 빌드 후 mods/ 폴더에 직접 복사 (BetterSpire2 방식) -->
+  <Target Name="CopyToMods" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <ModsDir>$(STS2GamePath)\mods</ModsDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(ModsDir)" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(ModsDir)" />
+    <Message Text="[DamageMeter] DLL copied to $(ModsDir)" Importance="high" />
+  </Target>
+
+</Project>
