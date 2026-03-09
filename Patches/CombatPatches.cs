@@ -1,6 +1,7 @@
 using System.Reflection;
 using HarmonyLib;
 using DamageMeterMod.Core;
+using DamageMeterMod.Persistence;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 
@@ -56,15 +57,17 @@ public static class CombatPatches
 
         /// <summary>
         /// Harmony Postfix — Hook.AfterDamageGiven 실행 후 호출.
-        /// __2 = Creature (dealer), __3 = DamageResult (results).
+        /// __2 = Creature (dealer), __3 = DamageResult (results),
+        /// __5 = Creature (target), __6 = CardModel.
         /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(Creature __2, DamageResult __3)
+        public static void Postfix(Creature __2, DamageResult __3, Creature __5, object __6)
         {
             try
             {
                 var dealer = __2;
                 var results = __3;
+                var target = __5;
 
                 // dealer가 null이거나 플레이어가 아니면 무시
                 if (dealer == null) return;
@@ -85,10 +88,32 @@ public static class CombatPatches
                 DamageTracker.Instance.EnsurePlayerRegistered(playerId, displayName);
                 DamageTracker.Instance.RecordDamage(playerId, damage);
 
+                // 독 귀속을 위해 마지막 행동 플레이어 기록
+                PoisonPatches.SetLastActingPlayer(playerId, displayName);
+
+                // 카드 이름 추출 (CardModel.Name, reflection 사용)
+                string cardName = "알 수 없음";
+                try
+                {
+                    if (__6 != null)
+                    {
+                        var nameProperty = __6.GetType().GetProperty("Name");
+                        cardName = nameProperty?.GetValue(__6)?.ToString() ?? cardName;
+                    }
+                }
+                catch { /* 카드 이름은 비필수 */ }
+
+                string targetName = target?.Name ?? "알 수 없음";
+
+                // 카드 데미지 로그 기록
+                DamageTracker.Instance.RecordCardDamage(
+                    playerId, displayName, cardName, targetName,
+                    results.TotalDamage, results.UnblockedDamage,
+                    results.BlockedDamage, results.WasTargetKilled);
+
                 ModEntry.LogDebug(
-                    $"[DamageMeter] {displayName} → {damage} dmg " +
-                    $"(Total:{results.TotalDamage} Blocked:{results.BlockedDamage} " +
-                    $"Unblocked:{results.UnblockedDamage} Kill:{results.WasTargetKilled})");
+                    $"[DamageMeter] {displayName} [{cardName}] → {targetName} {damage} dmg " +
+                    $"(Blocked:{results.BlockedDamage} Kill:{results.WasTargetKilled})");
             }
             catch (Exception ex)
             {
@@ -197,7 +222,16 @@ public static class CombatPatches
         {
             try
             {
+                // 전투 종료 전에 요약 생성 (IsActive=true인 상태에서)
+                var summary = DamageTracker.Instance.BuildCombatSummary();
                 DamageTracker.Instance.EndCombat();
+
+                // 전투 기록 저장
+                if (summary.TotalDamageDealt > 0)
+                {
+                    new CombatHistoryStore().SaveCombat(summary);
+                }
+
                 ModEntry.Log("[DamageMeter] Combat ended. Final stats preserved.");
             }
             catch (Exception ex)
