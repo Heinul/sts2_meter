@@ -52,13 +52,12 @@ public partial class DamageMeterOverlay : CanvasLayer
     private Control[] _tabContents = null!;
     private Button[] _tabButtons = null!;
     private int _activeTab;
-    private static readonly string[] TabNames = { "미터", "카드로그", "받은피해", "전투기록" };
+    private static readonly string[] TabNames = { "미터", "카드로그", "받은피해" };
 
     // 탭별 컨텐츠
     private VBoxContainer _meterRows = null!;
     private VBoxContainer _cardLogRows = null!;
     private VBoxContainer _receivedRows = null!;
-    private VBoxContainer _historyRows = null!;
     private ScrollContainer[] _scrollContainers = new ScrollContainer[3];
 
     // 드래그 상태
@@ -84,9 +83,6 @@ public partial class DamageMeterOverlay : CanvasLayer
     private VBoxContainer _contentArea = null!;
     private Button _minBtn = null!;
     private HBoxContainer _resizeHandleRow = null!;
-
-    // 전투기록 펼침 상태 추적
-    private readonly HashSet<string> _expandedCombats = new();
 
     // 카드로그 다중타격 펼침 상태
     private readonly HashSet<string> _expandedMultiHits = new();
@@ -202,9 +198,8 @@ public partial class DamageMeterOverlay : CanvasLayer
         var meterTab = BuildMeterTab();
         var cardLogTab = BuildCardLogTab();
         var receivedTab = BuildScrollTab(out _receivedRows, 1);
-        var historyTab = BuildScrollTab(out _historyRows, 2);
 
-        _tabContents = new Control[] { meterTab, cardLogTab, receivedTab, historyTab };
+        _tabContents = new Control[] { meterTab, cardLogTab, receivedTab };
         foreach (var tab in _tabContents)
         {
             tab.Visible = false;
@@ -658,9 +653,6 @@ public partial class DamageMeterOverlay : CanvasLayer
         _needsUpdate = true;
         _needsLogUpdate = true;
 
-        // 전투기록 탭은 탭 전환 시에만 로드
-        if (tabIndex == 3)
-            RefreshHistoryTab();
     }
 
     private void UpdateTabButtonStyle(Button btn, bool active)
@@ -738,7 +730,6 @@ public partial class DamageMeterOverlay : CanvasLayer
             case 0: RefreshMeterTab(); break;
             case 1: RefreshCardLogTab(); break;
             case 2: RefreshReceivedTab(); break;
-            case 3: break; // 전투기록은 탭 전환 시에만 로드 (디스크 I/O)
         }
 
         // 푸터 업데이트
@@ -1294,177 +1285,6 @@ public partial class DamageMeterOverlay : CanvasLayer
         _receivedRows.AddChild(row);
     }
 
-    // ----- 탭 3: 전투 기록 -----
-    private void RefreshHistoryTab()
-    {
-        ClearChildren(_historyRows);
-
-        var store = new CombatHistoryStore();
-        var historyList = store.LoadHistoryList();
-
-        if (historyList.Count == 0)
-        {
-            var emptyLabel = CreateLabel("저장된 전투 기록이 없습니다.", 11, SubTextColor);
-            emptyLabel.HorizontalAlignment = HorizontalAlignment.Center;
-            _historyRows.AddChild(emptyLabel);
-            return;
-        }
-
-        // 상단 버튼: 새로고침 + 전체 삭제
-        var btnRow = new HBoxContainer();
-        btnRow.AddThemeConstantOverride("separation", 4);
-
-        var refreshBtn = new Button();
-        refreshBtn.Text = "새로고침";
-        refreshBtn.AddThemeFontSizeOverride("font_size", 10);
-        refreshBtn.CustomMinimumSize = new Vector2(0, 24);
-        refreshBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        refreshBtn.Pressed += () => RefreshHistoryTab();
-        ApplyButtonStyle(refreshBtn);
-        btnRow.AddChild(refreshBtn);
-
-        var deleteAllBtn = new Button();
-        deleteAllBtn.Text = "전체 삭제";
-        deleteAllBtn.CustomMinimumSize = new Vector2(70, 24);
-        deleteAllBtn.Pressed += () =>
-        {
-            store.DeleteAllCombats();
-            _expandedCombats.Clear();
-            RefreshHistoryTab();
-        };
-        ApplyDeleteButtonStyle(deleteAllBtn);
-        btnRow.AddChild(deleteAllBtn);
-
-        _historyRows.AddChild(btnRow);
-
-        // 날짜별 그룹핑하여 표시
-        string currentDate = "";
-        foreach (var meta in historyList.Take(50))
-        {
-            var summary = store.LoadCombat(meta.FilePath);
-            if (summary == null) continue;
-
-            // 날짜 헤더 (새 날짜 시작)
-            var dateKey = summary.StartTime.ToLocalTime().ToString("yyyy/MM/dd");
-            if (dateKey != currentDate)
-            {
-                currentDate = dateKey;
-                var dateHeader = CreateLabel($"── {dateKey} ──", 10, SubTextColor);
-                dateHeader.HorizontalAlignment = HorizontalAlignment.Center;
-                _historyRows.AddChild(dateHeader);
-            }
-
-            CreateHistoryEntry(meta, summary, store);
-        }
-    }
-
-    private void CreateHistoryEntry(CombatHistoryMeta meta, CombatSummary summary, CombatHistoryStore store)
-    {
-        var entry = new VBoxContainer();
-        entry.AddThemeConstantOverride("separation", 0);
-
-        bool isExpanded = _expandedCombats.Contains(summary.CombatId);
-
-        // === 헤더 행 (클릭하여 펼치기/접기) ===
-        var headerRow = new HBoxContainer();
-        headerRow.AddThemeConstantOverride("separation", 4);
-        headerRow.CustomMinimumSize = new Vector2(0, 22);
-
-        var toggleBtn = new Button();
-        toggleBtn.Text = isExpanded ? "▼" : "▶";
-        toggleBtn.CustomMinimumSize = new Vector2(22, 20);
-        toggleBtn.AddThemeFontSizeOverride("font_size", 9);
-        ApplyButtonStyle(toggleBtn);
-        headerRow.AddChild(toggleBtn);
-
-        var timeStr = summary.StartTime.ToLocalTime().ToString("HH:mm");
-        var headerLabel = CreateLabel(
-            $"{timeStr} | {summary.TotalTurns}턴 | {summary.TotalDamageDealt:N0}",
-            10, TextColor);
-        headerLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        headerRow.AddChild(headerLabel);
-
-        var deleteBtn = new Button();
-        deleteBtn.Text = "삭제";
-        deleteBtn.CustomMinimumSize = new Vector2(40, 22);
-        ApplyDeleteButtonStyle(deleteBtn);
-        headerRow.AddChild(deleteBtn);
-
-        entry.AddChild(headerRow);
-
-        // === 상세 영역 (펼침 시만 표시) ===
-        var detail = new VBoxContainer();
-        detail.AddThemeConstantOverride("separation", 1);
-        detail.Visible = isExpanded;
-
-        foreach (var player in summary.Players)
-        {
-            var playerRow = new HBoxContainer();
-            playerRow.AddThemeConstantOverride("separation", 4);
-
-            var nameLabel = CreateLabel($"  {player.DisplayName}", 9, SubTextColor);
-            nameLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            playerRow.AddChild(nameLabel);
-
-            var dmgLabel = CreateLabel($"{player.TotalDamage:N0}", 9, TextColor);
-            playerRow.AddChild(dmgLabel);
-
-            var pctLabel = CreateLabel($"({player.DamagePercentage:F0}%)", 9, SubTextColor);
-            playerRow.AddChild(pctLabel);
-
-            detail.AddChild(playerRow);
-
-            // 상세 통계
-            var parts = new List<string>();
-            if (player.DirectDamage > 0) parts.Add($"직접:{player.DirectDamage:N0}");
-            if (player.PoisonDamage > 0) parts.Add($"독:{player.PoisonDamage:N0}");
-            if (player.MaxSingleHit > 0) parts.Add($"최대:{player.MaxSingleHit:N0}");
-            if (player.TotalDamageReceived > 0) parts.Add($"받은피해:{player.TotalDamageReceived:N0}");
-            if (player.DeathCount > 0) parts.Add($"사망:{player.DeathCount}");
-
-            if (parts.Count > 0)
-            {
-                var detailLabel = CreateLabel("    " + string.Join(" | ", parts), 8, SubTextColor);
-                detail.AddChild(detailLabel);
-            }
-        }
-
-        entry.AddChild(detail);
-
-        // === 이벤트 연결 ===
-        var combatId = summary.CombatId;
-        var filePath = meta.FilePath;
-
-        toggleBtn.Pressed += () =>
-        {
-            if (_expandedCombats.Contains(combatId))
-            {
-                _expandedCombats.Remove(combatId);
-                toggleBtn.Text = "▶";
-                detail.Visible = false;
-            }
-            else
-            {
-                _expandedCombats.Add(combatId);
-                toggleBtn.Text = "▼";
-                detail.Visible = true;
-            }
-        };
-
-        deleteBtn.Pressed += () =>
-        {
-            store.DeleteCombat(filePath);
-            _expandedCombats.Remove(combatId);
-            entry.QueueFree();
-        };
-
-        // 구분선
-        var sep = new HSeparator();
-        entry.AddChild(sep);
-
-        _historyRows.AddChild(entry);
-    }
-
     // ===== 버튼 이벤트 =====
     private void OnMinimizePressed()
     {
@@ -1557,48 +1377,6 @@ public partial class DamageMeterOverlay : CanvasLayer
         };
         button.AddThemeStyleboxOverride("hover", hoverStyle);
         button.AddThemeFontSizeOverride("font_size", 14);
-    }
-
-    private static void ApplyDeleteButtonStyle(Button button)
-    {
-        var style = new StyleBoxFlat
-        {
-            BgColor = new Color(0.55f, 0.15f, 0.15f, 0.95f),
-            BorderColor = new Color(0.8f, 0.3f, 0.3f, 0.6f),
-            BorderWidthTop = 1, BorderWidthBottom = 1,
-            BorderWidthLeft = 1, BorderWidthRight = 1,
-            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
-            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
-            ContentMarginLeft = 4, ContentMarginRight = 4,
-        };
-        button.AddThemeStyleboxOverride("normal", style);
-
-        var hoverStyle = new StyleBoxFlat
-        {
-            BgColor = new Color(0.7f, 0.2f, 0.2f, 0.95f),
-            BorderColor = new Color(1f, 0.4f, 0.4f, 0.8f),
-            BorderWidthTop = 1, BorderWidthBottom = 1,
-            BorderWidthLeft = 1, BorderWidthRight = 1,
-            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
-            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
-            ContentMarginLeft = 4, ContentMarginRight = 4,
-        };
-        button.AddThemeStyleboxOverride("hover", hoverStyle);
-
-        var pressedStyle = new StyleBoxFlat
-        {
-            BgColor = new Color(0.85f, 0.25f, 0.25f, 0.95f),
-            BorderColor = new Color(1f, 0.5f, 0.5f, 0.9f),
-            BorderWidthTop = 1, BorderWidthBottom = 1,
-            BorderWidthLeft = 1, BorderWidthRight = 1,
-            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
-            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
-            ContentMarginLeft = 4, ContentMarginRight = 4,
-        };
-        button.AddThemeStyleboxOverride("pressed", pressedStyle);
-
-        button.AddThemeFontSizeOverride("font_size", 11);
-        button.AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.85f));
     }
 
     private static void ClearChildren(Control parent)
