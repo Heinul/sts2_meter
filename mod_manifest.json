@@ -1,7 +1,7 @@
 {
 "pck_name": "DamageMeterMod",
 "name": "Damage Meter",
-"author": "HeNull",
-"description": "Tracks and displays individual damage dealt by each player in co-op mode. Press F7 to toggle.",
+"author": "HeiNul",
+"description": "Tracks and displays individual damage dealt. Press F7 to toggle.",
 "version": "1.0.0"
 }
