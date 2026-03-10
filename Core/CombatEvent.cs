@@ -6,7 +6,9 @@ public enum CombatEventType
     DamageDealt,      // 플레이어가 데미지를 줌
     DamageReceived,   // 플레이어가 데미지를 받음
     PoisonDamage,     // 독 데미지 (비율 귀속)
-    Death             // 사망
+    Death,            // 사망
+    BlockGained,      // 블록(쉴드) 획득
+    CardPlayed        // 카드 사용 (데미지 없는 카드 포함)
 }
 
 /// <summary>

@@ -51,7 +51,13 @@ public static class CombatPatches
             if (method == null)
                 throw new InvalidOperationException("[DamageMeter] Hook.AfterDamageGiven not found");
 
-            ModEntry.Log($"[DamageMeter] Found Hook.AfterDamageGiven → {method.DeclaringType?.FullName}.{method.Name}");
+            // 파라미터 시그니처 로깅 (디버그용)
+            var parameters = method.GetParameters();
+            ModEntry.Log($"[DamageMeter] Found Hook.AfterDamageGiven with {parameters.Length} params:");
+            foreach (var p in parameters)
+            {
+                ModEntry.Log($"[DamageMeter]   param[{p.Position}]: {p.ParameterType.FullName} {p.Name}");
+            }
             return method;
         }
 
@@ -91,17 +97,37 @@ public static class CombatPatches
                 // 독 귀속을 위해 마지막 행동 플레이어 기록
                 PoisonPatches.SetLastActingPlayer(playerId, displayName);
 
-                // 카드 이름 추출 (CardModel.Name, reflection 사용)
+                // 카드 이름 추출 (CardModel, reflection 사용)
                 string cardName = "알 수 없음";
                 try
                 {
                     if (__6 != null)
                     {
-                        var nameProperty = __6.GetType().GetProperty("Name");
-                        cardName = nameProperty?.GetValue(__6)?.ToString() ?? cardName;
+                        var cardType = __6.GetType();
+                        ModEntry.LogDebug($"[DamageMeter] CardModel type: {cardType.FullName}");
+
+                        // Title 프로퍼티 사용 (CardModel.Title = 표시 이름)
+                        var titleProperty = cardType.GetProperty("Title");
+                        if (titleProperty != null)
+                        {
+                            cardName = titleProperty.GetValue(__6)?.ToString() ?? cardName;
+                        }
+                        else
+                        {
+                            // fallback: Id 프로퍼티
+                            var idProperty = cardType.GetProperty("Id");
+                            cardName = idProperty?.GetValue(__6)?.ToString() ?? cardName;
+                        }
+                    }
+                    else
+                    {
+                        ModEntry.LogDebug("[DamageMeter] CardModel (__6) is null");
                     }
                 }
-                catch { /* 카드 이름은 비필수 */ }
+                catch (Exception cardEx)
+                {
+                    ModEntry.LogDebug($"[DamageMeter] CardModel error: {cardEx.Message}");
+                }
 
                 string targetName = target?.Name ?? "알 수 없음";
 
@@ -181,6 +207,7 @@ public static class CombatPatches
                     playerList.Add(("local_player", "You"));
                 }
 
+                PoisonPatches.ResetTracking();
                 DamageTracker.Instance.StartCombat(playerList);
                 ModEntry.Log($"[DamageMeter] Combat started. Tracking {playerList.Count} player(s): " +
                     string.Join(", ", playerList.Select(p => p.name)));

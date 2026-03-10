@@ -1,29 +1,45 @@
 using System.Reflection;
 using HarmonyLib;
 using DamageMeterMod.Core;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 
 namespace DamageMeterMod.Patches;
 
 /// <summary>
 /// 독/DoT 데미지 비율 귀속 패치.
-/// AfterPowerAmountChanged 훅을 사용.
 ///
-/// 귀속 방식:
-///   - 독 적용 시 (amount 증가): 해당 플레이어의 기여 스택 수를 기록
-///   - 독 틱 시 (amount 감소): 기여 비율에 따라 데미지를 플레이어들에게 분배
-///   - 예: A가 5독, B가 3독 → 독 8데미지 → A: 5, B: 3
+/// 확인된 시그니처 (로그에서 발견):
+///   AfterPowerAmountChanged(
+///     [0] CombatState combatState,
+///     [1] PowerModel power,
+///     [2] Decimal amount,        ← System.Decimal 타입!
+///     [3] Creature applier,
+///     [4] CardModel cardSource)
+///
+/// amount는 변경 후 현재 값. 이전 값은 직접 추적.
 /// </summary>
 public static class PoisonPatches
 {
-    // 현재 행동 중인 플레이어를 추적 (카드를 마지막으로 낸 플레이어)
+    // 카드를 마지막으로 낸 플레이어 (독 귀속용)
     private static string _lastActingPlayerId = string.Empty;
     private static string _lastActingPlayerName = string.Empty;
+
+    // 몬스터별 독 수치 추적 (이전 값 비교용): monsterKey → lastAmount
+    private static readonly Dictionary<string, int> _lastPoisonAmounts = new();
 
     /// <summary>카드를 낸 플레이어를 기록 (CombatPatches에서 호출).</summary>
     public static void SetLastActingPlayer(string playerId, string playerName)
     {
         _lastActingPlayerId = playerId;
         _lastActingPlayerName = playerName;
+    }
+
+    /// <summary>전투 시작 시 독 추적 상태 초기화.</summary>
+    public static void ResetTracking()
+    {
+        _lastPoisonAmounts.Clear();
+        _lastActingPlayerId = string.Empty;
+        _lastActingPlayerName = string.Empty;
     }
 
     // ---------------------------------------------------------------
@@ -53,96 +69,119 @@ public static class PoisonPatches
             return method;
         }
 
+        /// <summary>
+        /// Typed params:
+        ///   __1 = PowerModel power (object → reflection으로 Name/Owner 접근)
+        ///   __2 = Decimal amount (변경 후 현재 수치)
+        ///   __3 = Creature applier (독을 건 플레이어, 틱 시 null 가능)
+        /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(object[] __args)
+        public static void Postfix(object __1, decimal __2, Creature __3)
         {
             try
             {
-                if (__args == null || !DamageTracker.Instance.IsActive) return;
+                if (!DamageTracker.Instance.IsActive) return;
+                if (__1 == null) return;
 
-                // 파라미터에서 Power/PowerModel, Creature, amount 정보를 찾음
-                var creatureType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Entities.Creatures.Creature");
+                var powerType = __1.GetType();
 
-                object? ownerCreature = null;
-                string powerName = string.Empty;
-                int oldAmount = 0;
-                int newAmount = 0;
-                bool foundAmounts = false;
+                // === 파워 이름 확인 ===
+                var nameProp = powerType.GetProperty("Name")
+                    ?? powerType.GetProperty("PowerName")
+                    ?? powerType.GetProperty("Id");
+                string powerName = nameProp?.GetValue(__1)?.ToString() ?? "";
 
-                foreach (var arg in __args)
-                {
-                    if (arg == null) continue;
-                    var argType = arg.GetType();
-
-                    // Creature 찾기
-                    if (creatureType != null && creatureType.IsAssignableFrom(argType))
-                    {
-                        ownerCreature = arg;
-                        continue;
-                    }
-
-                    // Power/PowerModel에서 이름 추출 시도
-                    var nameProp = argType.GetProperty("Name") ?? argType.GetProperty("PowerName");
-                    if (nameProp != null && nameProp.PropertyType == typeof(string))
-                    {
-                        var name = nameProp.GetValue(arg)?.ToString();
-                        if (!string.IsNullOrEmpty(name))
-                            powerName = name;
-                    }
-
-                    // int 파라미터 (old/new amount)
-                    if (arg is int intVal && !foundAmounts)
-                    {
-                        if (oldAmount == 0 && newAmount == 0)
-                            oldAmount = intVal;
-                        else
-                        {
-                            newAmount = intVal;
-                            foundAmounts = true;
-                        }
-                    }
-                }
-
-                // "Poison" 관련인지 확인 (대소문자 무시)
                 if (string.IsNullOrEmpty(powerName)) return;
                 if (!powerName.Contains("Poison", StringComparison.OrdinalIgnoreCase) &&
                     !powerName.Contains("독", StringComparison.OrdinalIgnoreCase))
                     return;
 
-                if (ownerCreature == null) return;
+                // === 파워 소유자(몬스터) 찾기 ===
+                object? ownerCreature = null;
 
-                // 몬스터에게 적용된 독만 추적
-                var isMonsterProp = creatureType?.GetProperty("IsMonster");
+                // PowerModel.Owner, Creature, Target 등 시도
+                var ownerProp = powerType.GetProperty("Owner")
+                    ?? powerType.GetProperty("Creature")
+                    ?? powerType.GetProperty("Target");
+
+                if (ownerProp != null)
+                {
+                    ownerCreature = ownerProp.GetValue(__1);
+                }
+
+                if (ownerCreature == null)
+                {
+                    // Owner를 못 찾으면 프로퍼티 목록 전체 로깅 (첫 1회만)
+                    ModEntry.LogDebug($"[DamageMeter] Poison PowerModel owner not found. Type: {powerType.FullName}");
+                    foreach (var prop in powerType.GetProperties())
+                    {
+                        try
+                        {
+                            var val = prop.GetValue(__1);
+                            ModEntry.LogDebug($"[DamageMeter]   PowerProp: {prop.Name} ({prop.PropertyType.Name}) = {val}");
+                        }
+                        catch { }
+                    }
+                    return;
+                }
+
+                var creatureType = ownerCreature.GetType();
+                var isMonsterProp = creatureType.GetProperty("IsMonster");
                 bool isMonster = (bool)(isMonsterProp?.GetValue(ownerCreature) ?? false);
                 if (!isMonster) return;
 
-                var ownerNameProp = creatureType?.GetProperty("Name");
-                string monsterName = ownerNameProp?.GetValue(ownerCreature)?.ToString() ?? "Unknown";
+                var monsterNameProp = creatureType.GetProperty("Name");
+                string monsterName = monsterNameProp?.GetValue(ownerCreature)?.ToString() ?? "Unknown";
                 string monsterKey = $"{monsterName}_{ownerCreature.GetHashCode()}";
 
-                int diff = newAmount - oldAmount;
+                // === 이전 수치와 비교 ===
+                int currentAmount = (int)__2;
+                _lastPoisonAmounts.TryGetValue(monsterKey, out int oldAmount);
+                int diff = currentAmount - oldAmount;
 
-                if (diff > 0 && !string.IsNullOrEmpty(_lastActingPlayerId))
+                // 수치 갱신
+                if (currentAmount <= 0)
+                    _lastPoisonAmounts.Remove(monsterKey);
+                else
+                    _lastPoisonAmounts[monsterKey] = currentAmount;
+
+                ModEntry.LogDebug(
+                    $"[DamageMeter] 독 변화: {monsterName} {oldAmount}→{currentAmount} (diff={diff}, applier={__3?.Name})");
+
+                if (diff > 0)
                 {
-                    // 독 스택 증가 → 현재 플레이어에게 귀속
-                    DamageTracker.Instance.RecordPoisonApplied(monsterKey, _lastActingPlayerId, diff);
-                    ModEntry.LogDebug(
-                        $"[DamageMeter] 독 적용: {_lastActingPlayerName} → {monsterName} +{diff} 스택");
+                    // === 독 증가 → 적용 ===
+                    // applier 파라미터가 있으면 그 플레이어, 없으면 마지막 행동 플레이어
+                    string applicantId = _lastActingPlayerId;
+                    string applicantName = _lastActingPlayerName;
+
+                    if (__3 != null && __3.IsPlayer && __3.Player != null)
+                    {
+                        applicantId = __3.Player.NetId.ToString();
+                        applicantName = __3.Name ?? applicantId;
+                    }
+
+                    if (!string.IsNullOrEmpty(applicantId))
+                    {
+                        DamageTracker.Instance.RecordPoisonApplied(monsterKey, applicantId, diff);
+                        ModEntry.LogDebug(
+                            $"[DamageMeter] 독 적용: {applicantName} → {monsterName} +{diff} ({currentAmount}스택)");
+                    }
                 }
-                else if (diff == -1)
+                else if (diff == -1 && oldAmount > 0)
                 {
-                    // 독 스택 1 감소 = 틱 → 데미지는 감소 전 스택 수 (oldAmount)
-                    // 예: 43스택 → 43데미지 → 42스택 → 42데미지 → ...
+                    // === 독 틱: 데미지 = 감소 전 수치 (oldAmount) ===
+                    // 예: 43스택 → 43데미지 → 42스택
                     int poisonDamage = oldAmount;
                     DamageTracker.Instance.RecordPoisonDamageTick(monsterKey, monsterName, poisonDamage);
                     ModEntry.LogDebug(
-                        $"[DamageMeter] 독 틱: {monsterName} {poisonDamage}뎀 (잔여 {newAmount}스택, 비율 귀속)");
+                        $"[DamageMeter] 독 틱: {monsterName} {poisonDamage}뎀 (잔여 {currentAmount}스택)");
                 }
                 else if (diff < -1)
                 {
-                    // 2 이상 감소 = 해독/제거 (데미지 아님, 무시)
+                    // === 2 이상 감소 = 해독/제거 (데미지 아님) ===
                     ModEntry.LogDebug(
-                        $"[DamageMeter] 독 제거: {monsterName} {oldAmount}→{newAmount} (해독)");
+                        $"[DamageMeter] 독 제거: {monsterName} {oldAmount}→{currentAmount}");
                 }
             }
             catch (Exception ex)

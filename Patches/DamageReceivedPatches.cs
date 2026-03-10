@@ -1,15 +1,30 @@
 using System.Reflection;
 using HarmonyLib;
 using DamageMeterMod.Core;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 
 namespace DamageMeterMod.Patches;
 
 /// <summary>
 /// 받은 피해 + 사망 추적 패치.
-/// AfterDamageReceived, AfterDeath 훅.
 ///
-/// 주의: 이 훅들의 파라미터 시그니처는 미확인.
-/// 런타임에서 object[] __args로 타입을 발견한 후 typed 파라미터로 전환 예정.
+/// 확인된 시그니처 (로그에서 발견):
+///   AfterDamageReceived(
+///     [0] PlayerChoiceContext choiceContext,
+///     [1] IRunState runState,
+///     [2] CombatState combatState,
+///     [3] Creature target,
+///     [4] DamageResult result,
+///     [5] ValueProp props,
+///     [6] Creature dealer,
+///     [7] CardModel cardSource)
+///
+///   AfterDeath(
+///     [0] IRunState runState,
+///     [1] CombatState combatState,
+///     [2] Creature creature,
+///     [3] Boolean wasRemovalPrevented,
+///     [4] Single deathAnimLength)
 /// </summary>
 public static class DamageReceivedPatches
 {
@@ -30,7 +45,6 @@ public static class DamageReceivedPatches
             if (method == null)
                 throw new InvalidOperationException("[DamageMeter] Hook.AfterDamageReceived not found");
 
-            // 시그니처 발견용 로깅
             var parameters = method.GetParameters();
             ModEntry.Log($"[DamageMeter] Found Hook.AfterDamageReceived with {parameters.Length} params:");
             foreach (var p in parameters)
@@ -41,77 +55,42 @@ public static class DamageReceivedPatches
             return method;
         }
 
+        /// <summary>
+        /// Typed params:
+        ///   __3 = Creature target (피격자)
+        ///   __4 = DamageResult result
+        ///   __6 = Creature dealer (공격자)
+        /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(object[] __args)
+        public static void Postfix(Creature __3, DamageResult __4, Creature __6)
         {
             try
             {
-                if (__args == null || __args.Length < 4) return;
+                var target = __3;
+                var result = __4;
+                var dealer = __6;
 
-                // AfterDamageGiven과 유사한 구조로 추정:
-                // (PlayerChoiceContext, CombatState, Creature dealer, DamageResult, ValueProp, Creature target, ...)
-                // target이 플레이어인 경우를 찾아야 함
+                // target이 플레이어인 경우만 추적
+                if (target == null || !target.IsPlayer) return;
 
-                // 모든 args에서 Creature와 DamageResult를 찾음
-                object? damageResult = null;
-                object? dealerCreature = null;
-                object? targetCreature = null;
-
-                var creatureType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Entities.Creatures.Creature");
-                var damageResultType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Combat.DamageResult");
-
-                foreach (var arg in __args)
-                {
-                    if (arg == null) continue;
-                    var argType = arg.GetType();
-
-                    if (damageResultType != null && damageResultType.IsAssignableFrom(argType))
-                    {
-                        damageResult = arg;
-                    }
-                    else if (creatureType != null && creatureType.IsAssignableFrom(argType))
-                    {
-                        if (dealerCreature == null)
-                            dealerCreature = arg;
-                        else
-                            targetCreature = arg;
-                    }
-                }
-
-                if (damageResult == null || targetCreature == null) return;
-
-                // target이 플레이어인지 확인
-                var isPlayerProp = creatureType?.GetProperty("IsPlayer");
-                var playerProp = creatureType?.GetProperty("Player");
-                var nameProp = creatureType?.GetProperty("Name");
-
-                bool isPlayer = (bool)(isPlayerProp?.GetValue(targetCreature) ?? false);
-                if (!isPlayer) return;
-
-                // DamageResult에서 값 추출
-                int totalDamage = (int)(damageResultType?.GetProperty("TotalDamage")?.GetValue(damageResult) ?? 0);
-                int unblockedDamage = (int)(damageResultType?.GetProperty("UnblockedDamage")?.GetValue(damageResult) ?? 0);
-                int blockedDamage = (int)(damageResultType?.GetProperty("BlockedDamage")?.GetValue(damageResult) ?? 0);
-                bool wasKilled = (bool)(damageResultType?.GetProperty("WasTargetKilled")?.GetValue(damageResult) ?? false);
-
+                int totalDamage = result.TotalDamage;
                 if (totalDamage <= 0) return;
 
-                // 플레이어 ID
-                var playerObj = playerProp?.GetValue(targetCreature);
-                var netIdProp = playerObj?.GetType().GetProperty("NetId");
-                string playerId = netIdProp?.GetValue(playerObj)?.ToString() ?? "unknown";
-                string playerName = nameProp?.GetValue(targetCreature)?.ToString() ?? "알 수 없음";
+                var player = target.Player;
+                if (player == null) return;
 
-                // 공격자 이름
-                string sourceName = nameProp?.GetValue(dealerCreature)?.ToString() ?? "알 수 없음";
+                string playerId = player.NetId.ToString();
+                string playerName = target.Name ?? "알 수 없음";
+                string sourceName = dealer?.Name ?? "알 수 없음";
 
                 DamageTracker.Instance.RecordDamageReceived(
                     playerId, playerName, sourceName,
-                    totalDamage, unblockedDamage, blockedDamage, wasKilled);
+                    totalDamage, result.UnblockedDamage, result.BlockedDamage,
+                    result.WasTargetKilled);
 
                 ModEntry.LogDebug(
                     $"[DamageMeter] {playerName} ← {sourceName} {totalDamage} dmg " +
-                    $"(Blocked:{blockedDamage} Killed:{wasKilled})");
+                    $"(Blocked:{result.BlockedDamage} Killed:{result.WasTargetKilled})");
             }
             catch (Exception ex)
             {
@@ -147,42 +126,28 @@ public static class DamageReceivedPatches
             return method;
         }
 
+        /// <summary>
+        /// Typed param: __2 = Creature creature (사망한 엔티티)
+        /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(object[] __args)
+        public static void Postfix(Creature __2)
         {
             try
             {
-                if (__args == null) return;
+                var creature = __2;
+                if (creature == null || !creature.IsPlayer) return;
 
-                var creatureType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Entities.Creatures.Creature");
-                if (creatureType == null) return;
+                var player = creature.Player;
+                if (player == null) return;
 
-                // args에서 Creature를 찾음 (사망한 엔티티)
-                foreach (var arg in __args)
-                {
-                    if (arg == null) continue;
-                    if (!creatureType.IsAssignableFrom(arg.GetType())) continue;
+                string playerId = player.NetId.ToString();
+                string playerName = creature.Name ?? "알 수 없음";
 
-                    var isPlayerProp = creatureType.GetProperty("IsPlayer");
-                    bool isPlayer = (bool)(isPlayerProp?.GetValue(arg) ?? false);
-                    if (!isPlayer) continue;
+                DamageTracker.Instance.RecordDamageReceived(
+                    playerId, playerName, "사망",
+                    0, 0, 0, wasKilled: true);
 
-                    var playerProp = creatureType.GetProperty("Player");
-                    var nameProp = creatureType.GetProperty("Name");
-
-                    var playerObj = playerProp?.GetValue(arg);
-                    var netIdProp = playerObj?.GetType().GetProperty("NetId");
-
-                    string playerId = netIdProp?.GetValue(playerObj)?.ToString() ?? "unknown";
-                    string playerName = nameProp?.GetValue(arg)?.ToString() ?? "알 수 없음";
-
-                    DamageTracker.Instance.RecordDamageReceived(
-                        playerId, playerName, "사망",
-                        0, 0, 0, wasKilled: true);
-
-                    ModEntry.Log($"[DamageMeter] {playerName} 사망!");
-                    break;
-                }
+                ModEntry.Log($"[DamageMeter] {playerName} 사망!");
             }
             catch (Exception ex)
             {

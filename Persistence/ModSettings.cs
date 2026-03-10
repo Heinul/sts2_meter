@@ -16,6 +16,10 @@ public sealed class ModSettings
     public float PanelX { get; set; } = 20f;
     public float PanelY { get; set; } = 200f;
 
+    // 패널 크기
+    public float PanelWidth { get; set; }
+    public float PanelHeight { get; set; }
+
     // UI 상태
     public bool IsVisible { get; set; } = true;
     public bool IsMinimized { get; set; }

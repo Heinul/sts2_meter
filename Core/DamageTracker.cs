@@ -175,6 +175,62 @@ public sealed class DamageTracker
         OnCombatLogChanged?.Invoke();
     }
 
+    /// <summary>블록(쉴드) 획득 기록.</summary>
+    public void RecordBlockGained(string playerId, string playerName,
+        int blockAmount, string cardName)
+    {
+        if (!IsActive || blockAmount <= 0) return;
+
+        lock (_dataLock)
+        {
+            _combatLog.Add(new CombatEvent
+            {
+                Turn = CombatTurn,
+                EventType = CombatEventType.BlockGained,
+                PlayerId = playerId,
+                PlayerName = playerName,
+                CardName = cardName ?? "알 수 없음",
+                TargetName = string.Empty,
+                SourceName = string.Empty,
+                Damage = blockAmount,
+                UnblockedDamage = 0,
+                BlockedDamage = 0,
+                WasKill = false,
+                TimestampTicks = DateTime.UtcNow.Ticks
+            });
+        }
+
+        OnCombatLogChanged?.Invoke();
+    }
+
+    /// <summary>카드 사용 기록 (데미지 없는 카드).</summary>
+    public void RecordCardPlayed(string playerId, string playerName,
+        string cardName, string cardType)
+    {
+        if (!IsActive) return;
+
+        lock (_dataLock)
+        {
+            _combatLog.Add(new CombatEvent
+            {
+                Turn = CombatTurn,
+                EventType = CombatEventType.CardPlayed,
+                PlayerId = playerId,
+                PlayerName = playerName,
+                CardName = cardName ?? "알 수 없음",
+                TargetName = cardType,
+                SourceName = string.Empty,
+                Damage = 0,
+                UnblockedDamage = 0,
+                BlockedDamage = 0,
+                WasKill = false,
+                TimestampTicks = DateTime.UtcNow.Ticks
+            });
+        }
+
+        OnCombatLogChanged?.Invoke();
+    }
+
     /// <summary>독 스택 기여를 기록 (독 부여 시).</summary>
     public void RecordPoisonApplied(string monsterKey, string playerId, int stacksAdded)
     {
@@ -301,6 +357,7 @@ public sealed class DamageTracker
                         ? (float)r.TotalDamage / CombatTurn
                         : 0f,
                     TotalDamageReceived = r.TotalDamageReceived,
+                    TotalBlockedReceived = r.TotalBlockedReceived,
                     DeathCount = r.DeathCount
                 })
                 .ToList();
@@ -392,5 +449,6 @@ public readonly struct PlayerDamageSnapshot
     public required int CurrentTurnDamage { get; init; }
     public required float DamagePerTurn { get; init; }
     public required int TotalDamageReceived { get; init; }
+    public required int TotalBlockedReceived { get; init; }
     public required int DeathCount { get; init; }
 }
