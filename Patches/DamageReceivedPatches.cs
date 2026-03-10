@@ -80,8 +80,8 @@ public static class DamageReceivedPatches
                 if (player == null) return;
 
                 string playerId = player.NetId.ToString();
-                string playerName = target.Name ?? "알 수 없음";
-                string sourceName = dealer?.Name ?? "알 수 없음";
+                string playerName = target.Name ?? L10N.Unknown;
+                string sourceName = dealer?.Name ?? L10N.Unknown;
 
                 DamageTracker.Instance.RecordDamageReceived(
                     playerId, playerName, sourceName,
@@ -141,10 +141,10 @@ public static class DamageReceivedPatches
                 if (player == null) return;
 
                 string playerId = player.NetId.ToString();
-                string playerName = creature.Name ?? "알 수 없음";
+                string playerName = creature.Name ?? L10N.Unknown;
 
                 DamageTracker.Instance.RecordDamageReceived(
-                    playerId, playerName, "사망",
+                    playerId, playerName, L10N.Death,
                     0, 0, 0, wasKilled: true);
 
                 ModEntry.Log($"[DamageMeter] {playerName} 사망!");

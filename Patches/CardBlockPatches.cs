@@ -89,7 +89,7 @@ public static class CardBlockPatches
 
                 // 카드 이름
                 var cardModelType = cardModel.GetType();
-                string cardName = "알 수 없음";
+                string cardName = L10N.Unknown;
                 var titleProp = cardModelType.GetProperty("Title");
                 if (titleProp != null)
                     cardName = titleProp.GetValue(cardModel)?.ToString() ?? cardName;
@@ -115,7 +115,7 @@ public static class CardBlockPatches
 
                 var creatureProp = ownerPlayer.GetType().GetProperty("Creature");
                 var creature = creatureProp?.GetValue(ownerPlayer);
-                string playerName = "알 수 없음";
+                string playerName = L10N.Unknown;
                 if (creature != null)
                 {
                     var nameProp = creature.GetType().GetProperty("Name");
@@ -192,14 +192,14 @@ public static class CardBlockPatches
                 if (player == null) return;
 
                 string playerId = player.NetId.ToString();
-                string playerName = creature.Name ?? "알 수 없음";
+                string playerName = creature.Name ?? L10N.Unknown;
 
                 // 카드 이름 추출
                 string cardName = ExtractCardName(__4);
 
                 // CardModel이 null이면 ValueProp(__3)에서 출처 추출 시도
                 // (파워 효과로 블록을 얻는 경우: 잔상, 메탈화 등)
-                if (cardName == "알 수 없음" && __3 != null)
+                if (cardName == L10N.Unknown && __3 != null)
                 {
                     cardName = ExtractSourceFromValueProp(__3);
                 }
@@ -219,7 +219,7 @@ public static class CardBlockPatches
         /// <summary>CardModel에서 카드 이름을 추출.</summary>
         private static string ExtractCardName(object? cardModel)
         {
-            if (cardModel == null) return "알 수 없음";
+            if (cardModel == null) return L10N.Unknown;
 
             var titleProp = cardModel.GetType().GetProperty("Title");
             if (titleProp != null)
@@ -230,7 +230,7 @@ public static class CardBlockPatches
 
             var idProp = cardModel.GetType().GetProperty("Id");
             var id = idProp?.GetValue(cardModel)?.ToString();
-            return !string.IsNullOrEmpty(id) ? id : "알 수 없음";
+            return !string.IsNullOrEmpty(id) ? id : L10N.Unknown;
         }
 
         // 이름 추출용 프로퍼티 후보 목록
@@ -329,7 +329,7 @@ public static class CardBlockPatches
             // 디버그 덤프 (타입별 최초 1회)
             LogBlockVpDump(vpType, valueProp);
 
-            return "알 수 없음";
+            return L10N.Unknown;
         }
 
         private static string? TryExtractName(object obj, Type type)
