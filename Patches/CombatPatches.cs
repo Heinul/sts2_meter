@@ -3,6 +3,7 @@ using HarmonyLib;
 using DamageMeterMod.Core;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Players;
 
 namespace DamageMeterMod.Patches;
 
@@ -75,20 +76,36 @@ public static class CombatPatches
                 var results = __3;
                 var target = __5;
 
-                // dealer가 null이거나 플레이어가 아니면 무시
                 if (dealer == null) return;
-                if (!dealer.IsPlayer) return;
 
                 // 데미지 추출 (TotalDamage = Blocked + Unblocked)
                 int damage = results.TotalDamage;
                 if (damage <= 0) return;
 
-                // 플레이어 식별: Player.NetId (멀티플레이 고유 ID)
-                var player = dealer.Player;
+                // 플레이어 식별: 직접 플레이어 또는 소환수(Pet)의 주인
+                Player? player = null;
+                string displayName;
+
+                if (dealer.IsPlayer)
+                {
+                    player = dealer.Player;
+                    displayName = dealer.Name ?? $"Player_{player?.NetId}";
+                }
+                else if (dealer.IsPet && dealer.PetOwner != null)
+                {
+                    player = dealer.PetOwner;
+                    displayName = player.Creature?.Name ?? $"Player_{player.NetId}";
+                    ModEntry.LogDebug(
+                        $"[DamageMeter] Pet damage: {dealer.Name} (owner: {displayName}) → {target?.Name} {damage} dmg");
+                }
+                else
+                {
+                    return;
+                }
+
                 if (player == null) return;
 
                 string playerId = player.NetId.ToString();
-                string displayName = dealer.Name ?? $"Player_{playerId}";
 
                 // 전투 중 새 플레이어가 감지되면 자동 등록
                 DamageTracker.Instance.EnsurePlayerRegistered(playerId, displayName);
