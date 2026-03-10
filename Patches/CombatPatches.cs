@@ -1,7 +1,6 @@
 using System.Reflection;
 using HarmonyLib;
 using DamageMeterMod.Core;
-using DamageMeterMod.Persistence;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 
@@ -531,16 +530,7 @@ public static class CombatPatches
         {
             try
             {
-                // 전투 종료 전에 요약 생성 (IsActive=true인 상태에서)
-                var summary = DamageTracker.Instance.BuildCombatSummary();
                 DamageTracker.Instance.EndCombat();
-
-                // 전투 기록 저장
-                if (summary.TotalDamageDealt > 0)
-                {
-                    new CombatHistoryStore().SaveCombat(summary);
-                }
-
                 ModEntry.Log("[DamageMeter] Combat ended. Final stats preserved.");
             }
             catch (Exception ex)

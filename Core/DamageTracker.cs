@@ -43,9 +43,6 @@ public sealed class DamageTracker
     // 전투 상태
     public bool IsActive { get; private set; }
     public int CombatTurn { get; private set; }
-    private DateTime _combatStartTime;
-    private string _combatId = string.Empty;
-
     /// <summary>로컬(내) 플레이어 ID. 최소화 표시 등에 사용.</summary>
     public string LocalPlayerId { get; set; } = string.Empty;
 
@@ -86,8 +83,6 @@ public sealed class DamageTracker
             _cardModelCache.Clear();
             CombatTurn = 1;
             IsActive = true;
-            _combatStartTime = DateTime.UtcNow;
-            _combatId = Guid.NewGuid().ToString("N")[..8];
 
             foreach (var (id, name) in players)
             {
@@ -406,43 +401,6 @@ public sealed class DamageTracker
         lock (_dataLock)
         {
             return _combatLog.Where(e => e.EventType == eventType).ToList();
-        }
-    }
-
-    /// <summary>전투 종료 시 CombatSummary를 생성하여 반환.</summary>
-    public CombatSummary BuildCombatSummary()
-    {
-        lock (_dataLock)
-        {
-            int grandTotal = _records.Values.Sum(r => r.TotalDamage);
-
-            var players = _records.Values.Select(r => new PlayerSummary
-            {
-                PlayerId = r.PlayerId,
-                DisplayName = r.DisplayName,
-                TotalDamage = r.TotalDamage,
-                DirectDamage = r.DirectDamage,
-                PoisonDamage = r.PoisonDamage,
-                HitCount = r.HitCount,
-                MaxSingleHit = r.MaxSingleHit,
-                TotalDamageReceived = r.TotalDamageReceived,
-                DeathCount = r.DeathCount,
-                DamagePercentage = grandTotal > 0
-                    ? (float)r.TotalDamage / grandTotal * 100f
-                    : 0f
-            }).ToList();
-
-            return new CombatSummary
-            {
-                CombatId = _combatId,
-                StartTime = _combatStartTime,
-                EndTime = DateTime.UtcNow,
-                TotalTurns = CombatTurn,
-                TotalDamageDealt = grandTotal,
-                TotalDamageReceived = _records.Values.Sum(r => r.TotalDamageReceived),
-                Players = players,
-                CombatLog = _combatLog.ToList()
-            };
         }
     }
 
