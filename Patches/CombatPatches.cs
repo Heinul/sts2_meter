@@ -4,6 +4,8 @@ using DamageMeterMod.Core;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.ValueProps;
 
 namespace DamageMeterMod.Patches;
 
@@ -188,105 +190,69 @@ public static class CombatPatches
 
         /// <summary>
         /// 비카드 데미지의 출처를 추출.
-        /// ValueProp은 enum(Move, Unblockable 등)이므로 직접적인 소스 이름이 없음.
-        /// dealer(Creature)의 파워/렐릭 목록에서 데미지 소스를 추론.
+        /// Creature.Powers와 Player.Relics를 직접 스캔하여 소스를 추론.
         /// </summary>
         private static string ExtractNonCardDamageSource(object valueProp, Creature dealer)
         {
-            // 1) ValueProp enum 값 확인 (디버그용)
             var vpStr = valueProp?.ToString() ?? "";
             ModEntry.LogDebug($"[DamageMeter] Non-card damage. ValueProp={vpStr}, Dealer={dealer?.Name}");
 
-            // 2) dealer의 파워 목록에서 데미지를 주는 파워 탐색
-            if (dealer != null)
+            if (dealer == null) return L10N.EffectLabel;
+
+            try
             {
-                try
+                // 1) dealer의 파워 목록에서 데미지를 주는 파워 탐색
+                var powers = dealer.Powers;
+                if (powers != null)
                 {
-                    var creatureType = dealer.GetType();
-
-                    // Powers/ActivePowers 프로퍼티 탐색
-                    foreach (var propName in new[] { "Powers", "ActivePowers", "Buffs", "PowerInstances" })
+                    foreach (var power in powers)
                     {
-                        var prop = creatureType.GetProperty(propName);
-                        if (prop == null) continue;
+                        if (power == null || !power.IsVisible) continue;
 
-                        var powers = prop.GetValue(dealer);
-                        if (powers is not System.Collections.IEnumerable enumerable) continue;
-
-                        foreach (var power in enumerable)
+                        // Amount > 0인 파워 = 데미지를 줄 수 있는 파워
+                        if (power.Amount > 0)
                         {
-                            if (power == null) continue;
-                            var powerType = power.GetType();
-
-                            // 파워의 Title/Name 추출
-                            var titleProp = powerType.GetProperty("Title");
-                            var title = titleProp?.GetValue(power)?.ToString();
-                            if (!string.IsNullOrEmpty(title) && !title.Contains("MegaCrit"))
+                            var title = power.Title?.ToString();
+                            if (!string.IsNullOrEmpty(title))
                             {
-                                // 데미지를 주는 파워인지 확인 (DamageAmount > 0 등)
-                                var dmgProp = powerType.GetProperty("DamageAmount")
-                                    ?? powerType.GetProperty("Amount");
-                                if (dmgProp != null)
-                                {
-                                    var dmgVal = dmgProp.GetValue(power);
-                                    if (dmgVal is int amt && amt > 0)
-                                    {
-                                        ModEntry.LogDebug($"[DamageMeter] Power source: {title} (Amount={amt})");
-                                        return L10N.PowerPrefix(title);
-                                    }
-                                }
+                                ModEntry.LogDebug($"[DamageMeter] Power source: {title} (Amount={power.Amount})");
+                                return L10N.PowerPrefix(title);
                             }
 
-                            // Title 없으면 클래스명에서 추출
-                            var readable = CardNameMap.GetReadableName(powerType);
+                            // Title이 없으면 클래스명에서 추출
+                            var readable = CardNameMap.GetReadableName(power.GetType());
                             if (readable != L10N.Unknown)
                             {
                                 ModEntry.LogDebug($"[DamageMeter] Power source (by type): {readable}");
-                            }
-                        }
-                    }
-
-                    // Player의 렐릭 탐색
-                    var player = dealer.Player;
-                    if (player != null)
-                    {
-                        var playerType = player.GetType();
-                        foreach (var propName in new[] { "Relics", "ActiveRelics", "RelicInstances" })
-                        {
-                            var prop = playerType.GetProperty(propName);
-                            if (prop == null) continue;
-
-                            var relics = prop.GetValue(player);
-                            if (relics is not System.Collections.IEnumerable relicEnum) continue;
-
-                            foreach (var relic in relicEnum)
-                            {
-                                if (relic == null) continue;
-                                var relicType = relic.GetType();
-                                var titleProp = relicType.GetProperty("Title")
-                                    ?? relicType.GetProperty("Name");
-                                var title = titleProp?.GetValue(relic)?.ToString();
-                                if (!string.IsNullOrEmpty(title) && !title.Contains("MegaCrit"))
-                                {
-                                    ModEntry.LogDebug($"[DamageMeter] Relic found: {title}");
-                                }
+                                return L10N.PowerPrefix(readable);
                             }
                         }
                     }
                 }
-                catch (Exception ex)
+
+                // 2) Player의 렐릭 목록 스캔
+                var player = dealer.Player ?? (dealer.IsPet ? dealer.PetOwner : null);
+                if (player?.Relics != null)
                 {
-                    ModEntry.LogDebug($"[DamageMeter] Power/Relic scan error: {ex.Message}");
+                    foreach (var relic in player.Relics)
+                    {
+                        if (relic == null) continue;
+
+                        var title = relic.Title?.ToString();
+                        if (!string.IsNullOrEmpty(title))
+                        {
+                            ModEntry.LogDebug($"[DamageMeter] Relic candidate: {title}");
+                        }
+                    }
                 }
             }
-
-            // 3) ValueProp enum 값이라도 표시
-            if (!string.IsNullOrEmpty(vpStr) && vpStr != "0")
+            catch (Exception ex)
             {
-                return L10N.EffectPrefix(vpStr);
+                ModEntry.LogDebug($"[DamageMeter] Power/Relic scan error: {ex.Message}");
             }
 
-            return L10N.Unknown;
+            // 3) 소스를 특정하지 못한 경우 일반 라벨
+            return L10N.EffectLabel;
         }
     }
 
