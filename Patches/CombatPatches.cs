@@ -146,6 +146,12 @@ public static class CombatPatches
                     ModEntry.LogDebug($"[DamageMeter] CardModel/ValueProp error: {cardEx.Message}");
                 }
 
+                // CardModel 참조 캐시 (호버 팁용)
+                if (__6 != null && cardName != "알 수 없음")
+                {
+                    DamageTracker.Instance.CacheCardModel(cardName, __6);
+                }
+
                 string targetName = target?.Name ?? "알 수 없음";
 
                 // 카드 데미지 로그 기록

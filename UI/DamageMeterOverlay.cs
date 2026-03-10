@@ -1,4 +1,6 @@
+using System.Reflection;
 using Godot;
+using HarmonyLib;
 using DamageMeterMod.Core;
 using DamageMeterMod.Persistence;
 
@@ -95,6 +97,12 @@ public partial class DamageMeterOverlay : CanvasLayer
     private OptionButton _turnFilterOption = null!;
     private OptionButton _playerFilterOption = null!;
     private HBoxContainer _cardLogFilterBar = null!;
+
+    // 카드 호버 팁 (게임 내장 시스템)
+    private Control? _activeHoverTipSet;
+    private static Type? _hoverTipSetType;
+    private static MethodInfo? _createAndShowMethod;
+    private static bool _hoverTipSystemChecked;
 
     public override void _Ready()
     {
@@ -1008,7 +1016,6 @@ public partial class DamageMeterOverlay : CanvasLayer
         var infoLabel = CreateLabel($"{toggleMark} {first.CardName} → {targetText} x{hits.Count}", 10, TextColor);
         infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         infoLabel.ClipText = true;
-        infoLabel.TooltipText = BuildMultiHitTooltip(hits, totalDmg);
         infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
         summaryRow.AddChild(infoLabel);
 
@@ -1086,6 +1093,9 @@ public partial class DamageMeterOverlay : CanvasLayer
             }
         };
 
+        // 요약 행 호버 시 게임 내장 카드 툴팁 표시
+        AttachCardHoverTip(summaryRow, first.CardName);
+
         _cardLogRows.AddChild(container);
     }
 
@@ -1114,7 +1124,6 @@ public partial class DamageMeterOverlay : CanvasLayer
                 var infoLabel = CreateLabel($"{evt.CardName} → {evt.TargetName}", 10, TextColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
-                infoLabel.TooltipText = BuildCardTooltip(evt);
                 infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
@@ -1130,7 +1139,6 @@ public partial class DamageMeterOverlay : CanvasLayer
                 var infoLabel = CreateLabel(evt.CardName, 10, BlockColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
-                infoLabel.TooltipText = BuildCardTooltip(evt);
                 infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
@@ -1145,7 +1153,6 @@ public partial class DamageMeterOverlay : CanvasLayer
                 var infoLabel = CreateLabel($"독 → {evt.TargetName}", 10, PoisonColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
-                infoLabel.TooltipText = BuildCardTooltip(evt);
                 infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
@@ -1162,7 +1169,6 @@ public partial class DamageMeterOverlay : CanvasLayer
                 var infoLabel = CreateLabel($"{evt.CardName}{typeStr}", 10, CardPlayedColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
-                infoLabel.TooltipText = BuildCardTooltip(evt);
                 infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
@@ -1173,6 +1179,9 @@ public partial class DamageMeterOverlay : CanvasLayer
                 break;
             }
         }
+
+        // 행 호버 시 게임 내장 카드 툴팁 표시
+        AttachCardHoverTip(row, evt.CardName);
 
         _cardLogRows.AddChild(row);
     }
@@ -1593,5 +1602,108 @@ public partial class DamageMeterOverlay : CanvasLayer
     {
         foreach (var child in parent.GetChildren())
             child.QueueFree();
+    }
+
+    // ===== 카드 호버 팁 시스템 =====
+
+    /// <summary>
+    /// 게임 내장 호버 팁 시스템을 초기화.
+    /// NHoverTipSet.CreateAndShow 메서드를 리플렉션으로 찾음.
+    /// </summary>
+    private static void InitHoverTipSystem()
+    {
+        if (_hoverTipSystemChecked) return;
+        _hoverTipSystemChecked = true;
+
+        try
+        {
+            _hoverTipSetType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Nodes.HoverTips.NHoverTipSet");
+            if (_hoverTipSetType == null)
+            {
+                ModEntry.LogWarning("[DamageMeter] NHoverTipSet type not found - hover tips disabled");
+                return;
+            }
+
+            // CreateAndShow(Control owner, IEnumerable<IHoverTip> tips, HoverTipAlignment alignment)
+            foreach (var method in _hoverTipSetType.GetMethods(BindingFlags.Public | BindingFlags.Static))
+            {
+                if (method.Name != "CreateAndShow") continue;
+                var pars = method.GetParameters();
+                if (pars.Length == 3 && pars[0].ParameterType == typeof(Control))
+                {
+                    _createAndShowMethod = method;
+                    ModEntry.Log($"[DamageMeter] HoverTip system initialized: {method}");
+                    break;
+                }
+            }
+
+            if (_createAndShowMethod == null)
+            {
+                ModEntry.LogWarning("[DamageMeter] NHoverTipSet.CreateAndShow method not found");
+            }
+        }
+        catch (Exception ex)
+        {
+            ModEntry.LogError($"[DamageMeter] HoverTip init error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 카드 로그 행에 호버 이벤트를 연결.
+    /// 마우스 호버 시 게임 내장 카드 툴팁을 표시.
+    /// </summary>
+    private void AttachCardHoverTip(Control row, string cardName)
+    {
+        InitHoverTipSystem();
+        if (_createAndShowMethod == null) return;
+
+        row.MouseEntered += () => ShowCardHoverTip(row, cardName);
+        row.MouseExited += () => HideCardHoverTip();
+    }
+
+    private void ShowCardHoverTip(Control ownerControl, string cardName)
+    {
+        // 기존 팁 제거
+        HideCardHoverTip();
+
+        try
+        {
+            var cardModel = DamageTracker.Instance.GetCachedCardModel(cardName);
+            if (cardModel == null) return;
+
+            // CardModel.HoverTips 가져오기
+            var hoverTipsProp = cardModel.GetType().GetProperty("HoverTips");
+            if (hoverTipsProp == null) return;
+
+            var hoverTips = hoverTipsProp.GetValue(cardModel);
+            if (hoverTips == null) return;
+
+            // HoverTipAlignment enum 값 (0 = Left, 1 = Right, 2 = Above, 3 = Below)
+            var alignType = AccessTools.TypeByName("MegaCrit.Sts2.Core.HoverTips.HoverTipAlignment");
+            if (alignType == null) return;
+
+            var alignRight = Enum.ToObject(alignType, 1); // Right
+
+            // NHoverTipSet.CreateAndShow(ownerControl, hoverTips, alignment)
+            var result = _createAndShowMethod!.Invoke(null, new object[] { ownerControl, hoverTips, alignRight });
+            _activeHoverTipSet = result as Control;
+        }
+        catch (Exception ex)
+        {
+            ModEntry.LogDebug($"[DamageMeter] ShowCardHoverTip error: {ex.Message}");
+        }
+    }
+
+    private void HideCardHoverTip()
+    {
+        try
+        {
+            if (_activeHoverTipSet != null && IsInstanceValid(_activeHoverTipSet))
+            {
+                _activeHoverTipSet.QueueFree();
+            }
+        }
+        catch { }
+        _activeHoverTipSet = null;
     }
 }

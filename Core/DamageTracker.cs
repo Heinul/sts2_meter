@@ -34,6 +34,9 @@ public sealed class DamageTracker
     // 독 귀속 추적: monsterKey → { playerId → 기여 스택 수 }
     private readonly Dictionary<string, Dictionary<string, int>> _poisonAttribution = new();
 
+    // CardModel 참조 캐시: cardName → CardModel object (hover tip용)
+    private readonly Dictionary<string, object> _cardModelCache = new();
+
     // 플레이어 색상 매핑
     public PlayerColorMap ColorMap { get; } = new();
 
@@ -45,6 +48,26 @@ public sealed class DamageTracker
 
     /// <summary>로컬(내) 플레이어 ID. 최소화 표시 등에 사용.</summary>
     public string LocalPlayerId { get; set; } = string.Empty;
+
+    /// <summary>CardModel 참조를 캐시에 저장. 같은 카드명이면 최신으로 갱신.</summary>
+    public void CacheCardModel(string cardName, object cardModel)
+    {
+        if (string.IsNullOrEmpty(cardName) || cardModel == null) return;
+        lock (_dataLock)
+        {
+            _cardModelCache[cardName] = cardModel;
+        }
+    }
+
+    /// <summary>캐시된 CardModel 참조를 가져옴. 없으면 null.</summary>
+    public object? GetCachedCardModel(string cardName)
+    {
+        if (string.IsNullOrEmpty(cardName)) return null;
+        lock (_dataLock)
+        {
+            return _cardModelCache.GetValueOrDefault(cardName);
+        }
+    }
 
     /// <summary>UI 갱신이 필요할 때 발생하는 콜백.</summary>
     public event Action? OnDataChanged;
@@ -60,6 +83,7 @@ public sealed class DamageTracker
             _records.Clear();
             _combatLog.Clear();
             _poisonAttribution.Clear();
+            _cardModelCache.Clear();
             CombatTurn = 1;
             IsActive = true;
             _combatStartTime = DateTime.UtcNow;
