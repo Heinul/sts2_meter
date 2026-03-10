@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.ValueProps;
+using MegaCrit.Sts2.Core.Localization;
 
 namespace DamageMeterMod.Patches;
 
@@ -70,7 +71,7 @@ public static class CombatPatches
         /// __5 = Creature (target), __6 = CardModel.
         /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(Creature __2, DamageResult __3, object __4, Creature __5, object __6)
+        public static void Postfix(Creature __2, DamageResult __3, object __4, Creature __5, CardModel __6)
         {
             try
             {
@@ -116,41 +117,30 @@ public static class CombatPatches
                 // 독 귀속을 위해 마지막 행동 플레이어 기록
                 PoisonPatches.SetLastActingPlayer(playerId, displayName);
 
-                // 카드 이름 추출 (CardModel → 클래스명 fallback)
+                // 카드 이름 추출
                 string cardName = L10N.Unknown;
                 try
                 {
                     if (__6 != null)
                     {
-                        // CardModel이 있으면 카드 이름 추출
-                        var cardType = __6.GetType();
-                        ModEntry.LogDebug($"[DamageMeter] CardModel type: {cardType.FullName}");
+                        // 1) LocString 기반 로컬라이즈된 이름 (게임 언어 설정 반영)
+                        cardName = GetLocStringText(__6.TitleLocString) ?? cardName;
 
-                        // 1) Title 프로퍼티 (로컬라이즈된 이름)
-                        var titleProperty = cardType.GetProperty("Title");
-                        if (titleProperty != null)
-                        {
-                            cardName = titleProperty.GetValue(__6)?.ToString() ?? cardName;
-                        }
-
-                        // 2) Title 실패 시 Id 프로퍼티
+                        // 2) Id 프로퍼티 fallback
                         if (cardName == L10N.Unknown)
                         {
-                            var idProperty = cardType.GetProperty("Id");
-                            cardName = idProperty?.GetValue(__6)?.ToString() ?? cardName;
+                            cardName = __6.Id?.ToString() ?? cardName;
                         }
 
-                        // 3) 그래도 실패 시 클래스명에서 추출
+                        // 3) 클래스명에서 추출 fallback
                         if (cardName == L10N.Unknown)
                         {
-                            cardName = CardNameMap.GetReadableName(cardType);
+                            cardName = CardNameMap.GetReadableName(__6.GetType());
                         }
                     }
                     else
                     {
                         // CardModel이 null → 비카드 데미지 (파워/렐릭/포션 등)
-                        // ValueProp은 enum(Move, Unblockable 등)이므로 소스 식별 불가.
-                        // 가능한 컨텍스트에서 출처 추출 시도.
                         cardName = ExtractNonCardDamageSource(__4, dealer);
                     }
 
@@ -189,6 +179,29 @@ public static class CombatPatches
         }
 
         /// <summary>
+        /// LocString에서 로컬라이즈된 텍스트를 안전하게 추출.
+        /// GetFormattedText() → GetRawText() → ToString() 순으로 시도.
+        /// </summary>
+        internal static string? GetLocStringText(LocString? locString)
+        {
+            if (locString == null) return null;
+            try
+            {
+                var text = locString.GetFormattedText();
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+            catch { }
+            try
+            {
+                var text = locString.GetRawText();
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+            catch { }
+            var fallback = locString.ToString();
+            return string.IsNullOrEmpty(fallback) ? null : fallback;
+        }
+
+        /// <summary>
         /// 비카드 데미지의 출처를 추출.
         /// Creature.Powers와 Player.Relics를 직접 스캔하여 소스를 추론.
         /// </summary>
@@ -212,7 +225,7 @@ public static class CombatPatches
                         // Amount > 0인 파워 = 데미지를 줄 수 있는 파워
                         if (power.Amount > 0)
                         {
-                            var title = power.Title?.ToString();
+                            var title = GetLocStringText(power.Title);
                             if (!string.IsNullOrEmpty(title))
                             {
                                 ModEntry.LogDebug($"[DamageMeter] Power source: {title} (Amount={power.Amount})");
@@ -238,7 +251,7 @@ public static class CombatPatches
                     {
                         if (relic == null) continue;
 
-                        var title = relic.Title?.ToString();
+                        var title = GetLocStringText(relic.Title);
                         if (!string.IsNullOrEmpty(title))
                         {
                             ModEntry.LogDebug($"[DamageMeter] Relic candidate: {title}");
@@ -566,25 +579,17 @@ public static class CombatPatches
                 var cardProp = __2.GetType().GetProperty("Card");
                 if (cardProp == null) return;
 
-                var cardModel = cardProp.GetValue(__2);
+                var cardModel = cardProp.GetValue(__2) as CardModel;
                 if (cardModel == null) return;
 
-                // 카드 이름 추출
-                string cardName = L10N.Unknown;
-                var cardType = cardModel.GetType();
-
-                var titleProp = cardType.GetProperty("Title");
-                if (titleProp != null)
-                    cardName = titleProp.GetValue(cardModel)?.ToString() ?? cardName;
+                // LocString 기반 로컬라이즈된 이름
+                string cardName = AfterDamageGivenPatch.GetLocStringText(cardModel.TitleLocString) ?? L10N.Unknown;
 
                 if (cardName == L10N.Unknown)
-                {
-                    var idProp = cardType.GetProperty("Id");
-                    cardName = idProp?.GetValue(cardModel)?.ToString() ?? cardName;
-                }
+                    cardName = cardModel.Id?.ToString() ?? L10N.Unknown;
 
                 if (cardName == L10N.Unknown)
-                    cardName = CardNameMap.GetReadableName(cardType);
+                    cardName = CardNameMap.GetReadableName(cardModel.GetType());
 
                 if (cardName != L10N.Unknown)
                 {
