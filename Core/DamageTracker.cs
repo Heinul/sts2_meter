@@ -43,6 +43,9 @@ public sealed class DamageTracker
     private DateTime _combatStartTime;
     private string _combatId = string.Empty;
 
+    /// <summary>로컬(내) 플레이어 ID. 최소화 표시 등에 사용.</summary>
+    public string LocalPlayerId { get; set; } = string.Empty;
+
     /// <summary>UI 갱신이 필요할 때 발생하는 콜백.</summary>
     public event Action? OnDataChanged;
 

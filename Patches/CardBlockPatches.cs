@@ -172,10 +172,11 @@ public static class CardBlockPatches
         /// Typed params:
         ///   __1 = Creature (블록을 얻은 대상)
         ///   __2 = Decimal (블록 양)
-        ///   __4 = CardModel (object, 블록의 출처 카드)
+        ///   __3 = ValueProp (블록 출처 정보, 파워 등)
+        ///   __4 = CardModel (object, 블록의 출처 카드 — 파워 효과 시 null)
         /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(Creature __1, decimal __2, object __4)
+        public static void Postfix(Creature __1, decimal __2, object __3, object __4)
         {
             try
             {
@@ -194,17 +195,13 @@ public static class CardBlockPatches
                 string playerName = creature.Name ?? "알 수 없음";
 
                 // 카드 이름 추출
-                string cardName = "알 수 없음";
-                if (__4 != null)
+                string cardName = ExtractCardName(__4);
+
+                // CardModel이 null이면 ValueProp(__3)에서 출처 추출 시도
+                // (파워 효과로 블록을 얻는 경우: 잔상, 메탈화 등)
+                if (cardName == "알 수 없음" && __3 != null)
                 {
-                    var titleProp = __4.GetType().GetProperty("Title");
-                    if (titleProp != null)
-                        cardName = titleProp.GetValue(__4)?.ToString() ?? cardName;
-                    else
-                    {
-                        var idProp = __4.GetType().GetProperty("Id");
-                        cardName = idProp?.GetValue(__4)?.ToString() ?? cardName;
-                    }
+                    cardName = ExtractSourceFromValueProp(__3);
                 }
 
                 DamageTracker.Instance.RecordBlockGained(
@@ -217,6 +214,173 @@ public static class CardBlockPatches
             {
                 ModEntry.LogError($"[DamageMeter] AfterBlockGained error: {ex.Message}");
             }
+        }
+
+        /// <summary>CardModel에서 카드 이름을 추출.</summary>
+        private static string ExtractCardName(object? cardModel)
+        {
+            if (cardModel == null) return "알 수 없음";
+
+            var titleProp = cardModel.GetType().GetProperty("Title");
+            if (titleProp != null)
+            {
+                var title = titleProp.GetValue(cardModel)?.ToString();
+                if (!string.IsNullOrEmpty(title)) return title;
+            }
+
+            var idProp = cardModel.GetType().GetProperty("Id");
+            var id = idProp?.GetValue(cardModel)?.ToString();
+            return !string.IsNullOrEmpty(id) ? id : "알 수 없음";
+        }
+
+        // 이름 추출용 프로퍼티 후보 목록
+        private static readonly string[] NameProps = { "Name", "Title", "DisplayName", "Source", "SourceName", "Id" };
+
+        /// <summary>
+        /// ValueProp에서 블록 출처(파워명, 유물명 등)를 깊게 추출.
+        /// CombatPatches.ExtractSourceFromValueProp과 동일한 전략 사용.
+        /// </summary>
+        private static string ExtractSourceFromValueProp(object valueProp)
+        {
+            var vpType = valueProp.GetType();
+
+            // 1) 직접 이름 프로퍼티
+            var directName = TryExtractName(valueProp, vpType);
+            if (directName != null) return directName;
+
+            // 2) 타입 이름에서 추출
+            var typeName = vpType.Name;
+            foreach (var suffix in new[] { "DamageValueProp", "BlockValueProp", "ValueProp",
+                                            "DamageVP", "BlockVP", "VP", "Damage", "Effect" })
+            {
+                if (typeName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && typeName.Length > suffix.Length)
+                {
+                    var name = typeName[..^suffix.Length];
+                    if (name.Length >= 2)
+                    {
+                        ModEntry.LogDebug($"[DamageMeter] BlockVP type name → {name}");
+                        return name;
+                    }
+                }
+            }
+
+            // 3) ToString()
+            var str = valueProp.ToString();
+            if (!string.IsNullOrEmpty(str) && str != vpType.FullName && str != "0"
+                && (!str.Contains('.') || str.Length < 40))
+                return str;
+
+            // 4) 중첩 객체 (Power, Relic 등)
+            foreach (var propName in new[] { "Power", "Relic", "Artifact", "Card", "CardModel",
+                                              "Buff", "Effect", "StatusEffect", "Owner", "Parent" })
+            {
+                var prop = vpType.GetProperty(propName);
+                if (prop == null) continue;
+                try
+                {
+                    var nested = prop.GetValue(valueProp);
+                    if (nested == null) continue;
+                    var nestedName = TryExtractName(nested, nested.GetType());
+                    if (nestedName != null)
+                    {
+                        ModEntry.LogDebug($"[DamageMeter] BlockVP.{propName}.Name → {nestedName}");
+                        return nestedName;
+                    }
+                }
+                catch { }
+            }
+
+            // 5) 모든 문자열 프로퍼티
+            foreach (var prop in vpType.GetProperties())
+            {
+                try
+                {
+                    if (prop.PropertyType == typeof(string))
+                    {
+                        var val = prop.GetValue(valueProp) as string;
+                        if (!string.IsNullOrEmpty(val) && val != "0" && val.Length > 1 && val.Length < 50
+                            && !val.Contains('.') && !long.TryParse(val, out _))
+                            return val;
+                    }
+                }
+                catch { }
+            }
+
+            // 6) 모든 중첩 객체의 이름
+            foreach (var prop in vpType.GetProperties())
+            {
+                try
+                {
+                    if (prop.PropertyType.IsPrimitive || prop.PropertyType == typeof(string)
+                        || prop.PropertyType == typeof(decimal) || prop.PropertyType.IsEnum)
+                        continue;
+                    var nested = prop.GetValue(valueProp);
+                    if (nested == null) continue;
+                    var nestedName = TryExtractName(nested, nested.GetType());
+                    if (nestedName != null)
+                    {
+                        ModEntry.LogDebug($"[DamageMeter] BlockVP.{prop.Name}.Name → {nestedName}");
+                        return nestedName;
+                    }
+                }
+                catch { }
+            }
+
+            // 디버그 덤프 (타입별 최초 1회)
+            LogBlockVpDump(vpType, valueProp);
+
+            return "알 수 없음";
+        }
+
+        private static string? TryExtractName(object obj, Type type)
+        {
+            foreach (var propName in NameProps)
+            {
+                var prop = type.GetProperty(propName);
+                if (prop == null) continue;
+                try
+                {
+                    var val = prop.GetValue(obj)?.ToString();
+                    if (!string.IsNullOrEmpty(val) && val != "0" && val.Length < 100
+                        && !val.Contains("MegaCrit"))
+                        return val;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static readonly HashSet<string> _loggedBlockVpTypes = new();
+
+        private static void LogBlockVpDump(Type vpType, object valueProp)
+        {
+            var key = vpType.FullName ?? vpType.Name;
+            if (!_loggedBlockVpTypes.Add(key)) return;
+
+            ModEntry.Log($"[DamageMeter] === BlockVP Dump: {key} ===");
+            foreach (var prop in vpType.GetProperties())
+            {
+                try
+                {
+                    var val = prop.GetValue(valueProp);
+                    ModEntry.Log($"[DamageMeter]   BVP.{prop.Name} ({prop.PropertyType.Name}) = {val}");
+                    if (val != null && !prop.PropertyType.IsPrimitive && prop.PropertyType != typeof(string)
+                        && prop.PropertyType != typeof(decimal) && !prop.PropertyType.IsEnum)
+                    {
+                        foreach (var inner in val.GetType().GetProperties())
+                        {
+                            try
+                            {
+                                var iv = inner.GetValue(val);
+                                ModEntry.Log($"[DamageMeter]     .{prop.Name}.{inner.Name} ({inner.PropertyType.Name}) = {iv}");
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                catch { }
+            }
+            ModEntry.Log($"[DamageMeter] === BlockVP Dump End ===");
         }
     }
 }

@@ -83,6 +83,19 @@ public partial class DamageMeterOverlay : CanvasLayer
     private Button _minBtn = null!;
     private HBoxContainer _resizeHandleRow = null!;
 
+    // 전투기록 펼침 상태 추적
+    private readonly HashSet<string> _expandedCombats = new();
+
+    // 카드로그 다중타격 펼침 상태
+    private readonly HashSet<string> _expandedMultiHits = new();
+
+    // 카드로그 필터 상태
+    private int _cardLogFilterTurn = -1;           // -1 = 전체
+    private string _cardLogFilterPlayerId = "";     // "" = 전체
+    private OptionButton _turnFilterOption = null!;
+    private OptionButton _playerFilterOption = null!;
+    private HBoxContainer _cardLogFilterBar = null!;
+
     public override void _Ready()
     {
         Layer = 100;
@@ -176,7 +189,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         _contentArea.AddThemeConstantOverride("separation", 0);
 
         var meterTab = BuildMeterTab();
-        var cardLogTab = BuildScrollTab(out _cardLogRows, 0);
+        var cardLogTab = BuildCardLogTab();
         var receivedTab = BuildScrollTab(out _receivedRows, 1);
         var historyTab = BuildScrollTab(out _historyRows, 2);
 
@@ -236,6 +249,157 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         _scrollContainers[scrollIndex] = scroll;
         return scroll;
+    }
+
+    // ===== 카드로그 탭 (필터 포함) =====
+    private VBoxContainer BuildCardLogTab()
+    {
+        var container = new VBoxContainer();
+        container.AddThemeConstantOverride("separation", 2);
+
+        // 필터 바
+        _cardLogFilterBar = new HBoxContainer();
+        _cardLogFilterBar.AddThemeConstantOverride("separation", 4);
+        _cardLogFilterBar.CustomMinimumSize = new Vector2(0, 24);
+
+        // 턴 필터
+        var turnLabel = CreateLabel("턴:", 9, SubTextColor);
+        _cardLogFilterBar.AddChild(turnLabel);
+
+        _turnFilterOption = new OptionButton();
+        _turnFilterOption.AddThemeFontSizeOverride("font_size", 9);
+        _turnFilterOption.CustomMinimumSize = new Vector2(65, 22);
+        _turnFilterOption.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _turnFilterOption.AddItem("전체", 0);
+        _turnFilterOption.ItemSelected += OnTurnFilterChanged;
+        ApplyOptionButtonStyle(_turnFilterOption);
+        _cardLogFilterBar.AddChild(_turnFilterOption);
+
+        // 플레이어 필터
+        var playerLabel = CreateLabel("플레이어:", 9, SubTextColor);
+        _cardLogFilterBar.AddChild(playerLabel);
+
+        _playerFilterOption = new OptionButton();
+        _playerFilterOption.AddThemeFontSizeOverride("font_size", 9);
+        _playerFilterOption.CustomMinimumSize = new Vector2(75, 22);
+        _playerFilterOption.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _playerFilterOption.AddItem("전체", 0);
+        _playerFilterOption.ItemSelected += OnPlayerFilterChanged;
+        ApplyOptionButtonStyle(_playerFilterOption);
+        _cardLogFilterBar.AddChild(_playerFilterOption);
+
+        container.AddChild(_cardLogFilterBar);
+
+        // 스크롤 + 로그 행
+        var scroll = new ScrollContainer();
+        scroll.CustomMinimumSize = new Vector2(0, _currentHeight - 28);
+        scroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+
+        _cardLogRows = new VBoxContainer();
+        _cardLogRows.AddThemeConstantOverride("separation", 1);
+        _cardLogRows.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        scroll.AddChild(_cardLogRows);
+
+        _scrollContainers[0] = scroll;
+        container.AddChild(scroll);
+
+        return container;
+    }
+
+    private void OnTurnFilterChanged(long index)
+    {
+        if (index == 0)
+            _cardLogFilterTurn = -1; // 전체
+        else
+        {
+            var text = _turnFilterOption.GetItemText((int)index);
+            if (text.StartsWith("T") && int.TryParse(text[1..], out int turn))
+                _cardLogFilterTurn = turn;
+            else
+                _cardLogFilterTurn = -1;
+        }
+        _needsLogUpdate = true;
+    }
+
+    private void OnPlayerFilterChanged(long index)
+    {
+        if (index == 0)
+            _cardLogFilterPlayerId = ""; // 전체
+        else
+            _cardLogFilterPlayerId = _playerFilterOption.GetItemMetadata((int)index).AsString();
+        _needsLogUpdate = true;
+    }
+
+    private static void ApplyOptionButtonStyle(OptionButton optBtn)
+    {
+        var style = new StyleBoxFlat
+        {
+            BgColor = new Color(0.15f, 0.15f, 0.2f, 0.9f),
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+            ContentMarginLeft = 4, ContentMarginRight = 4,
+        };
+        optBtn.AddThemeStyleboxOverride("normal", style);
+
+        var hoverStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.22f, 0.22f, 0.3f, 0.9f),
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+            ContentMarginLeft = 4, ContentMarginRight = 4,
+        };
+        optBtn.AddThemeStyleboxOverride("hover", hoverStyle);
+        optBtn.AddThemeColorOverride("font_color", TextColor);
+    }
+
+    /// <summary>필터 드롭다운의 선택지를 현재 전투 로그 기반으로 갱신.</summary>
+    private void UpdateCardLogFilterOptions(IReadOnlyList<CombatEvent> cardEvents)
+    {
+        // 턴 목록 수집
+        var turns = new SortedSet<int>();
+        var players = new Dictionary<string, string>(); // id → name
+
+        foreach (var evt in cardEvents)
+        {
+            turns.Add(evt.Turn);
+            if (!players.ContainsKey(evt.PlayerId))
+                players[evt.PlayerId] = evt.PlayerName;
+        }
+
+        // 턴 필터 갱신 (선택값 유지)
+        int prevTurn = _cardLogFilterTurn;
+        _turnFilterOption.Clear();
+        _turnFilterOption.AddItem("전체");
+        _turnFilterOption.SetItemMetadata(0, "");
+        int selectTurnIdx = 0;
+
+        int idx = 1;
+        foreach (var t in turns)
+        {
+            _turnFilterOption.AddItem($"T{t}");
+            _turnFilterOption.SetItemMetadata(idx, t.ToString());
+            if (prevTurn == t) selectTurnIdx = idx;
+            idx++;
+        }
+        _turnFilterOption.Selected = selectTurnIdx;
+
+        // 플레이어 필터 갱신 (선택값 유지)
+        string prevPlayer = _cardLogFilterPlayerId;
+        _playerFilterOption.Clear();
+        _playerFilterOption.AddItem("전체");
+        _playerFilterOption.SetItemMetadata(0, "");
+        int selectPlayerIdx = 0;
+
+        idx = 1;
+        foreach (var (pid, pname) in players)
+        {
+            _playerFilterOption.AddItem(pname);
+            _playerFilterOption.SetItemMetadata(idx, pid);
+            if (prevPlayer == pid) selectPlayerIdx = idx;
+            idx++;
+        }
+        _playerFilterOption.Selected = selectPlayerIdx;
     }
 
     // ===== 푸터 =====
@@ -505,28 +669,54 @@ public partial class DamageMeterOverlay : CanvasLayer
     private void RefreshMinimizedTitle()
     {
         var snapshot = DamageTracker.Instance.GetSnapshot();
-        int grandTotal = 0;
-        int turnTotal = 0;
-        foreach (var s in snapshot)
+        var localId = DamageTracker.Instance.LocalPlayerId;
+        int turn = DamageTracker.Instance.CombatTurn;
+
+        if (snapshot.Count == 0)
         {
-            grandTotal += s.TotalDamage;
-            turnTotal += s.CurrentTurnDamage;
+            _titleLabel.Text = "데미지 미터 | 대기중";
+            return;
         }
 
-        string pctText;
-        if (snapshot.Count <= 1)
+        // 내 플레이어 찾기 (여러 방법으로 시도)
+        PlayerDamageSnapshot? me = null;
+
+        // 1) LocalPlayerId로 정확히 매칭
+        if (!string.IsNullOrEmpty(localId))
         {
-            pctText = "100%";
+            foreach (var s in snapshot)
+            {
+                if (s.PlayerId == localId)
+                {
+                    me = s;
+                    break;
+                }
+            }
+        }
+
+        // 2) 매칭 실패 시 → 솔로(1인)이면 유일한 플레이어 사용
+        if (!me.HasValue && snapshot.Count == 1)
+        {
+            me = snapshot[0];
+        }
+
+        // 3) 그래도 매칭 실패 시 → 첫 번째 플레이어 사용 (fallback)
+        if (!me.HasValue && snapshot.Count > 0)
+        {
+            me = snapshot[0];
+            ModEntry.LogDebug($"[DamageMeter] Minimized: LocalPlayerId '{localId}' not matched, using first player '{snapshot[0].PlayerId}'");
+        }
+
+        if (me.HasValue)
+        {
+            var m = me.Value;
+            // 내 이름 | 내 데미지 (내 %) | T{턴번호} 턴데미지
+            _titleLabel.Text = $"{m.DisplayName} {m.TotalDamage:N0} ({m.Percentage:F0}%) T{turn} +{m.CurrentTurnDamage:N0}";
         }
         else
         {
-            var parts = new List<string>();
-            foreach (var s in snapshot)
-                parts.Add($"{s.Percentage:F0}%");
-            pctText = string.Join("/", parts);
+            _titleLabel.Text = $"데미지 미터 | T{turn}";
         }
-
-        _titleLabel.Text = $"총:{grandTotal:N0} | 턴:{turnTotal:N0} | {pctText}";
     }
 
     // ===== 탭별 리프레시 =====
@@ -672,9 +862,21 @@ public partial class DamageMeterOverlay : CanvasLayer
             }
         }
 
-        if (cardEvents.Count == 0)
+        // 필터 드롭다운 갱신 (필터 적용 전 전체 이벤트 기준)
+        UpdateCardLogFilterOptions(cardEvents);
+
+        // 필터 적용
+        var filtered = cardEvents.AsEnumerable();
+        if (_cardLogFilterTurn >= 0)
+            filtered = filtered.Where(e => e.Turn == _cardLogFilterTurn);
+        if (!string.IsNullOrEmpty(_cardLogFilterPlayerId))
+            filtered = filtered.Where(e => e.PlayerId == _cardLogFilterPlayerId);
+        var filteredList = filtered.ToList();
+
+        if (filteredList.Count == 0)
         {
-            var emptyLabel = CreateLabel("카드 로그가 없습니다.", 11, SubTextColor);
+            var emptyText = cardEvents.Count > 0 ? "필터 조건에 맞는 로그가 없습니다." : "카드 로그가 없습니다.";
+            var emptyLabel = CreateLabel(emptyText, 11, SubTextColor);
             emptyLabel.HorizontalAlignment = HorizontalAlignment.Center;
             _cardLogRows.AddChild(emptyLabel);
             return;
@@ -682,14 +884,209 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         var colorMap = DamageTracker.Instance.ColorMap;
 
-        // 최신 100개, 역순 (최신이 위)
-        int start = Math.Max(0, cardEvents.Count - 100);
-        for (int i = cardEvents.Count - 1; i >= start; i--)
+        // 필터 결과 요약 (필터 활성 시)
+        if (_cardLogFilterTurn >= 0 || !string.IsNullOrEmpty(_cardLogFilterPlayerId))
         {
-            var evt = cardEvents[i];
-            var color = colorMap.GetColor(evt.PlayerId);
-            CreateCardEventRow(evt, color);
+            int totalDmg = 0, totalBlock = 0, count = 0;
+            foreach (var evt in filteredList)
+            {
+                count++;
+                if (evt.EventType == CombatEventType.DamageDealt || evt.EventType == CombatEventType.PoisonDamage)
+                    totalDmg += evt.Damage;
+                else if (evt.EventType == CombatEventType.BlockGained)
+                    totalBlock += evt.Damage;
+            }
+            var summaryParts = new List<string> { $"{count}건" };
+            if (totalDmg > 0) summaryParts.Add($"데미지:{totalDmg:N0}");
+            if (totalBlock > 0) summaryParts.Add($"블록:{totalBlock:N0}");
+            var summaryLabel = CreateLabel(string.Join(" | ", summaryParts), 9, SubTextColor);
+            summaryLabel.HorizontalAlignment = HorizontalAlignment.Center;
+            _cardLogRows.AddChild(summaryLabel);
         }
+
+        // 같은 턴+플레이어+카드+타입의 연속 DamageDealt를 그룹핑
+        var groups = GroupConsecutiveHits(filteredList);
+
+        // 최신 100그룹, 역순 (최신이 위)
+        int start = Math.Max(0, groups.Count - 100);
+        for (int i = groups.Count - 1; i >= start; i--)
+        {
+            var group = groups[i];
+            var color = colorMap.GetColor(group[0].PlayerId);
+
+            if (group.Count > 1 && group[0].EventType == CombatEventType.DamageDealt)
+                CreateMultiHitRow(group, color);
+            else
+                CreateCardEventRow(group[0], color);
+        }
+    }
+
+    /// <summary>
+    /// 같은 턴+플레이어+카드이름의 연속 DamageDealt 이벤트를 묶어서 그룹 리스트로 반환.
+    /// 다중타격 카드(칼날 춤, 수리검 등)가 여러 개로 나오는 걸 하나로 합침.
+    /// </summary>
+    private static List<List<CombatEvent>> GroupConsecutiveHits(List<CombatEvent> events)
+    {
+        var result = new List<List<CombatEvent>>();
+        if (events.Count == 0) return result;
+
+        var currentGroup = new List<CombatEvent> { events[0] };
+
+        for (int i = 1; i < events.Count; i++)
+        {
+            var prev = events[i - 1];
+            var cur = events[i];
+
+            // 같은 턴, 같은 플레이어, 같은 카드, 둘 다 DamageDealt면 그룹에 추가
+            bool canGroup = cur.EventType == CombatEventType.DamageDealt
+                && prev.EventType == CombatEventType.DamageDealt
+                && cur.Turn == prev.Turn
+                && cur.PlayerId == prev.PlayerId
+                && cur.CardName == prev.CardName;
+
+            if (canGroup)
+            {
+                currentGroup.Add(cur);
+            }
+            else
+            {
+                result.Add(currentGroup);
+                currentGroup = new List<CombatEvent> { cur };
+            }
+        }
+
+        result.Add(currentGroup);
+        return result;
+    }
+
+    /// <summary>다중타격 그룹을 하나의 요약 행 + 펼침 가능한 상세로 표시.</summary>
+    private void CreateMultiHitRow(List<CombatEvent> hits, Color playerColor)
+    {
+        var first = hits[0];
+        int totalDmg = 0;
+        bool anyKill = false;
+        foreach (var h in hits)
+        {
+            totalDmg += h.Damage;
+            if (h.WasKill) anyKill = true;
+        }
+
+        // 그룹 고유 키 (펼침 상태 추적용)
+        var groupKey = $"{first.Turn}_{first.PlayerId}_{first.CardName}_{first.TimestampTicks}";
+        bool isExpanded = _expandedMultiHits.Contains(groupKey);
+
+        var container = new VBoxContainer();
+        container.AddThemeConstantOverride("separation", 0);
+
+        // === 요약 행 (클릭하여 펼치기/접기) ===
+        var summaryRow = new HBoxContainer();
+        summaryRow.AddThemeConstantOverride("separation", 4);
+
+        // 턴 번호
+        var turnLabel = CreateLabel($"[T{first.Turn}]", 10, SubTextColor);
+        turnLabel.CustomMinimumSize = new Vector2(32, 0);
+        summaryRow.AddChild(turnLabel);
+
+        // 플레이어 이름
+        var nameLabel = CreateLabel(first.PlayerName, 10, playerColor);
+        nameLabel.CustomMinimumSize = new Vector2(55, 0);
+        nameLabel.ClipText = true;
+        summaryRow.AddChild(nameLabel);
+
+        // 카드이름 → 대상 (히트수)
+        var targetNames = new HashSet<string>();
+        foreach (var h in hits)
+        {
+            if (!string.IsNullOrEmpty(h.TargetName))
+                targetNames.Add(h.TargetName);
+        }
+        var targetText = targetNames.Count <= 2
+            ? string.Join(",", targetNames)
+            : $"{targetNames.First()} 외 {targetNames.Count - 1}";
+
+        var toggleMark = isExpanded ? "▼" : "▶";
+        var infoLabel = CreateLabel($"{toggleMark} {first.CardName} → {targetText} x{hits.Count}", 10, TextColor);
+        infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        infoLabel.ClipText = true;
+        infoLabel.TooltipText = BuildMultiHitTooltip(hits, totalDmg);
+        infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
+        summaryRow.AddChild(infoLabel);
+
+        // 총 데미지
+        var killText = anyKill ? " 처치!" : "";
+        var dmgColor = anyKill ? new Color(1f, 0.4f, 0.4f) : TextColor;
+        var dmgLabel = CreateLabel($"{totalDmg:N0}{killText}", 10, dmgColor);
+        dmgLabel.HorizontalAlignment = HorizontalAlignment.Right;
+        dmgLabel.CustomMinimumSize = new Vector2(65, 0);
+        summaryRow.AddChild(dmgLabel);
+
+        container.AddChild(summaryRow);
+
+        // === 상세 히트 목록 (펼침 시만 표시) ===
+        var detailContainer = new VBoxContainer();
+        detailContainer.AddThemeConstantOverride("separation", 0);
+        detailContainer.Visible = isExpanded;
+
+        for (int i = 0; i < hits.Count; i++)
+        {
+            var hit = hits[i];
+            var hitRow = new HBoxContainer();
+            hitRow.AddThemeConstantOverride("separation", 4);
+
+            // 인덱스
+            var idxLabel = CreateLabel($"  #{i + 1}", 9, SubTextColor);
+            idxLabel.CustomMinimumSize = new Vector2(87, 0);
+            hitRow.AddChild(idxLabel);
+
+            // 대상
+            var tgtLabel = CreateLabel($"→ {hit.TargetName}", 9, SubTextColor);
+            tgtLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            tgtLabel.ClipText = true;
+            hitRow.AddChild(tgtLabel);
+
+            // 개별 데미지
+            var hitKill = hit.WasKill ? " 처치!" : "";
+            var hitColor = hit.WasKill ? new Color(1f, 0.4f, 0.4f) : SubTextColor;
+            var hitDmgLabel = CreateLabel($"{hit.Damage:N0}{hitKill}", 9, hitColor);
+            hitDmgLabel.HorizontalAlignment = HorizontalAlignment.Right;
+            hitDmgLabel.CustomMinimumSize = new Vector2(65, 0);
+            hitRow.AddChild(hitDmgLabel);
+
+            detailContainer.AddChild(hitRow);
+        }
+
+        container.AddChild(detailContainer);
+
+        // === 클릭으로 펼침/접기 ===
+        var toggleBtn = new Button();
+        toggleBtn.Flat = true;
+        toggleBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        toggleBtn.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        toggleBtn.Modulate = new Color(1, 1, 1, 0); // 투명 버튼
+        toggleBtn.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
+
+        // 요약 행 위에 투명 버튼 오버레이
+        // 대신 summaryRow 자체를 버튼처럼 동작시키기 위해 요약 행 클릭 이벤트 사용
+        summaryRow.GuiInput += (InputEvent @event) =>
+        {
+            if (@event is InputEventMouseButton mb && mb.ButtonIndex == MouseButton.Left && mb.Pressed)
+            {
+                if (_expandedMultiHits.Contains(groupKey))
+                {
+                    _expandedMultiHits.Remove(groupKey);
+                    infoLabel.Text = $"▶ {first.CardName} → {targetText} x{hits.Count}";
+                    detailContainer.Visible = false;
+                }
+                else
+                {
+                    _expandedMultiHits.Add(groupKey);
+                    infoLabel.Text = $"▼ {first.CardName} → {targetText} x{hits.Count}";
+                    detailContainer.Visible = true;
+                }
+            }
+        };
+
+        _cardLogRows.AddChild(container);
     }
 
     private void CreateCardEventRow(CombatEvent evt, Color playerColor)
@@ -717,6 +1114,8 @@ public partial class DamageMeterOverlay : CanvasLayer
                 var infoLabel = CreateLabel($"{evt.CardName} → {evt.TargetName}", 10, TextColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
+                infoLabel.TooltipText = BuildCardTooltip(evt);
+                infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
                 var dmgColor = evt.WasKill ? new Color(1f, 0.4f, 0.4f) : TextColor;
@@ -731,9 +1130,11 @@ public partial class DamageMeterOverlay : CanvasLayer
                 var infoLabel = CreateLabel(evt.CardName, 10, BlockColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
+                infoLabel.TooltipText = BuildCardTooltip(evt);
+                infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
-                var blockLabel = CreateLabel($"+{evt.Damage}블록", 10, BlockColor);
+                var blockLabel = CreateLabel($"+{evt.Damage}", 10, BlockColor);
                 blockLabel.HorizontalAlignment = HorizontalAlignment.Right;
                 blockLabel.CustomMinimumSize = new Vector2(65, 0);
                 row.AddChild(blockLabel);
@@ -744,6 +1145,8 @@ public partial class DamageMeterOverlay : CanvasLayer
                 var infoLabel = CreateLabel($"독 → {evt.TargetName}", 10, PoisonColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
+                infoLabel.TooltipText = BuildCardTooltip(evt);
+                infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
                 var dmgLabel = CreateLabel($"{evt.Damage:N0}", 10, PoisonColor);
@@ -759,6 +1162,8 @@ public partial class DamageMeterOverlay : CanvasLayer
                 var infoLabel = CreateLabel($"{evt.CardName}{typeStr}", 10, CardPlayedColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
+                infoLabel.TooltipText = BuildCardTooltip(evt);
+                infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
                 // 빈 공간 (데미지/블록 없음)
@@ -893,67 +1298,159 @@ public partial class DamageMeterOverlay : CanvasLayer
             return;
         }
 
-        // 새로고침 버튼
+        // 상단 버튼: 새로고침 + 전체 삭제
+        var btnRow = new HBoxContainer();
+        btnRow.AddThemeConstantOverride("separation", 4);
+
         var refreshBtn = new Button();
         refreshBtn.Text = "새로고침";
         refreshBtn.AddThemeFontSizeOverride("font_size", 10);
         refreshBtn.CustomMinimumSize = new Vector2(0, 24);
-        refreshBtn.Pressed += () =>
+        refreshBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        refreshBtn.Pressed += () => RefreshHistoryTab();
+        ApplyButtonStyle(refreshBtn);
+        btnRow.AddChild(refreshBtn);
+
+        var deleteAllBtn = new Button();
+        deleteAllBtn.Text = "전체 삭제";
+        deleteAllBtn.CustomMinimumSize = new Vector2(70, 24);
+        deleteAllBtn.Pressed += () =>
         {
-            ClearChildren(_historyRows);
+            store.DeleteAllCombats();
+            _expandedCombats.Clear();
             RefreshHistoryTab();
         };
-        ApplyButtonStyle(refreshBtn);
-        _historyRows.AddChild(refreshBtn);
+        ApplyDeleteButtonStyle(deleteAllBtn);
+        btnRow.AddChild(deleteAllBtn);
 
-        foreach (var meta in historyList.Take(20))
+        _historyRows.AddChild(btnRow);
+
+        // 날짜별 그룹핑하여 표시
+        string currentDate = "";
+        foreach (var meta in historyList.Take(50))
         {
             var summary = store.LoadCombat(meta.FilePath);
             if (summary == null) continue;
 
-            CreateHistoryRow(summary);
+            // 날짜 헤더 (새 날짜 시작)
+            var dateKey = summary.StartTime.ToLocalTime().ToString("yyyy/MM/dd");
+            if (dateKey != currentDate)
+            {
+                currentDate = dateKey;
+                var dateHeader = CreateLabel($"── {dateKey} ──", 10, SubTextColor);
+                dateHeader.HorizontalAlignment = HorizontalAlignment.Center;
+                _historyRows.AddChild(dateHeader);
+            }
+
+            CreateHistoryEntry(meta, summary, store);
         }
     }
 
-    private void CreateHistoryRow(CombatSummary summary)
+    private void CreateHistoryEntry(CombatHistoryMeta meta, CombatSummary summary, CombatHistoryStore store)
     {
-        var container = new VBoxContainer();
-        container.AddThemeConstantOverride("separation", 1);
+        var entry = new VBoxContainer();
+        entry.AddThemeConstantOverride("separation", 0);
 
+        bool isExpanded = _expandedCombats.Contains(summary.CombatId);
+
+        // === 헤더 행 (클릭하여 펼치기/접기) ===
         var headerRow = new HBoxContainer();
         headerRow.AddThemeConstantOverride("separation", 4);
+        headerRow.CustomMinimumSize = new Vector2(0, 22);
 
-        var dateLabel = CreateLabel(summary.StartTime.ToLocalTime().ToString("MM/dd HH:mm"), 10, SubTextColor);
-        headerRow.AddChild(dateLabel);
+        var toggleBtn = new Button();
+        toggleBtn.Text = isExpanded ? "▼" : "▶";
+        toggleBtn.CustomMinimumSize = new Vector2(22, 20);
+        toggleBtn.AddThemeFontSizeOverride("font_size", 9);
+        ApplyButtonStyle(toggleBtn);
+        headerRow.AddChild(toggleBtn);
 
-        var turnsLabel = CreateLabel($"{summary.TotalTurns}턴", 10, TextColor);
-        headerRow.AddChild(turnsLabel);
+        var timeStr = summary.StartTime.ToLocalTime().ToString("HH:mm");
+        var headerLabel = CreateLabel(
+            $"{timeStr} | {summary.TotalTurns}턴 | {summary.TotalDamageDealt:N0}",
+            10, TextColor);
+        headerLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        headerRow.AddChild(headerLabel);
 
-        var totalLabel = CreateLabel($"총 {summary.TotalDamageDealt:N0} 데미지", 10, TextColor);
-        totalLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        totalLabel.HorizontalAlignment = HorizontalAlignment.Right;
-        headerRow.AddChild(totalLabel);
+        var deleteBtn = new Button();
+        deleteBtn.Text = "삭제";
+        deleteBtn.CustomMinimumSize = new Vector2(40, 22);
+        ApplyDeleteButtonStyle(deleteBtn);
+        headerRow.AddChild(deleteBtn);
 
-        container.AddChild(headerRow);
+        entry.AddChild(headerRow);
 
-        // 플레이어 통계
+        // === 상세 영역 (펼침 시만 표시) ===
+        var detail = new VBoxContainer();
+        detail.AddThemeConstantOverride("separation", 1);
+        detail.Visible = isExpanded;
+
         foreach (var player in summary.Players)
         {
             var playerRow = new HBoxContainer();
+            playerRow.AddThemeConstantOverride("separation", 4);
+
             var nameLabel = CreateLabel($"  {player.DisplayName}", 9, SubTextColor);
             nameLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             playerRow.AddChild(nameLabel);
 
-            var statLabel = CreateLabel($"{player.TotalDamage:N0} ({player.DamagePercentage:F0}%)", 9, SubTextColor);
-            playerRow.AddChild(statLabel);
+            var dmgLabel = CreateLabel($"{player.TotalDamage:N0}", 9, TextColor);
+            playerRow.AddChild(dmgLabel);
 
-            container.AddChild(playerRow);
+            var pctLabel = CreateLabel($"({player.DamagePercentage:F0}%)", 9, SubTextColor);
+            playerRow.AddChild(pctLabel);
+
+            detail.AddChild(playerRow);
+
+            // 상세 통계
+            var parts = new List<string>();
+            if (player.DirectDamage > 0) parts.Add($"직접:{player.DirectDamage:N0}");
+            if (player.PoisonDamage > 0) parts.Add($"독:{player.PoisonDamage:N0}");
+            if (player.MaxSingleHit > 0) parts.Add($"최대:{player.MaxSingleHit:N0}");
+            if (player.TotalDamageReceived > 0) parts.Add($"받은피해:{player.TotalDamageReceived:N0}");
+            if (player.DeathCount > 0) parts.Add($"사망:{player.DeathCount}");
+
+            if (parts.Count > 0)
+            {
+                var detailLabel = CreateLabel("    " + string.Join(" | ", parts), 8, SubTextColor);
+                detail.AddChild(detailLabel);
+            }
         }
 
-        var sep = new HSeparator();
-        container.AddChild(sep);
+        entry.AddChild(detail);
 
-        _historyRows.AddChild(container);
+        // === 이벤트 연결 ===
+        var combatId = summary.CombatId;
+        var filePath = meta.FilePath;
+
+        toggleBtn.Pressed += () =>
+        {
+            if (_expandedCombats.Contains(combatId))
+            {
+                _expandedCombats.Remove(combatId);
+                toggleBtn.Text = "▶";
+                detail.Visible = false;
+            }
+            else
+            {
+                _expandedCombats.Add(combatId);
+                toggleBtn.Text = "▼";
+                detail.Visible = true;
+            }
+        };
+
+        deleteBtn.Pressed += () =>
+        {
+            store.DeleteCombat(filePath);
+            _expandedCombats.Remove(combatId);
+            entry.QueueFree();
+        };
+
+        // 구분선
+        var sep = new HSeparator();
+        entry.AddChild(sep);
+
+        _historyRows.AddChild(entry);
     }
 
     // ===== 버튼 이벤트 =====
@@ -979,6 +1476,26 @@ public partial class DamageMeterOverlay : CanvasLayer
             _titleLabel.Text = "데미지 미터";
             _needsUpdate = true;
             _needsLogUpdate = true;
+        }
+
+        // CanvasLayer 자식은 부모 컨테이너가 없어 자동 크기 조절 안됨
+        // Deferred로 실행하여 Visibility 변경 후 최소 크기 재계산
+        CallDeferred(nameof(FitPanelToContent));
+    }
+
+    /// <summary>패널 크기를 콘텐츠 최소 크기에 맞춤.</summary>
+    private void FitPanelToContent()
+    {
+        if (_isMinimized)
+        {
+            // 최소화: 헤더만 표시되도록 축소
+            _panel.Size = new Vector2(_currentWidth, _panel.GetCombinedMinimumSize().Y);
+        }
+        else
+        {
+            // 확장: 원래 크기로 복원
+            ApplyResize();
+            _panel.Size = _panel.GetCombinedMinimumSize();
         }
     }
 
@@ -1028,6 +1545,48 @@ public partial class DamageMeterOverlay : CanvasLayer
         };
         button.AddThemeStyleboxOverride("hover", hoverStyle);
         button.AddThemeFontSizeOverride("font_size", 14);
+    }
+
+    private static void ApplyDeleteButtonStyle(Button button)
+    {
+        var style = new StyleBoxFlat
+        {
+            BgColor = new Color(0.55f, 0.15f, 0.15f, 0.95f),
+            BorderColor = new Color(0.8f, 0.3f, 0.3f, 0.6f),
+            BorderWidthTop = 1, BorderWidthBottom = 1,
+            BorderWidthLeft = 1, BorderWidthRight = 1,
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+            ContentMarginLeft = 4, ContentMarginRight = 4,
+        };
+        button.AddThemeStyleboxOverride("normal", style);
+
+        var hoverStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.7f, 0.2f, 0.2f, 0.95f),
+            BorderColor = new Color(1f, 0.4f, 0.4f, 0.8f),
+            BorderWidthTop = 1, BorderWidthBottom = 1,
+            BorderWidthLeft = 1, BorderWidthRight = 1,
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+            ContentMarginLeft = 4, ContentMarginRight = 4,
+        };
+        button.AddThemeStyleboxOverride("hover", hoverStyle);
+
+        var pressedStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.85f, 0.25f, 0.25f, 0.95f),
+            BorderColor = new Color(1f, 0.5f, 0.5f, 0.9f),
+            BorderWidthTop = 1, BorderWidthBottom = 1,
+            BorderWidthLeft = 1, BorderWidthRight = 1,
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+            ContentMarginLeft = 4, ContentMarginRight = 4,
+        };
+        button.AddThemeStyleboxOverride("pressed", pressedStyle);
+
+        button.AddThemeFontSizeOverride("font_size", 11);
+        button.AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.85f));
     }
 
     private static void ClearChildren(Control parent)

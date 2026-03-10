@@ -93,6 +93,38 @@ public sealed class CombatHistoryStore
         }
     }
 
+    /// <summary>특정 전투 기록 삭제.</summary>
+    public bool DeleteCombat(string filePath)
+    {
+        try
+        {
+            var error = DirAccess.RemoveAbsolute(filePath);
+            if (error == Error.Ok)
+            {
+                ModEntry.LogDebug($"[DamageMeter] 전투 기록 삭제: {filePath}");
+                return true;
+            }
+            ModEntry.LogError($"[DamageMeter] 전투 기록 삭제 실패: {error}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            ModEntry.LogError($"[DamageMeter] 전투 기록 삭제 실패: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>모든 전투 기록 삭제.</summary>
+    public void DeleteAllCombats()
+    {
+        var files = LoadHistoryList();
+        foreach (var meta in files)
+        {
+            DirAccess.RemoveAbsolute(meta.FilePath);
+        }
+        ModEntry.Log($"[DamageMeter] 전투 기록 {files.Count}개 삭제됨.");
+    }
+
     private void CleanupOldFiles()
     {
         var files = LoadHistoryList();

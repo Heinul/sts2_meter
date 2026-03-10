@@ -64,10 +64,11 @@ public static class CombatPatches
         /// <summary>
         /// Harmony Postfix — Hook.AfterDamageGiven 실행 후 호출.
         /// __2 = Creature (dealer), __3 = DamageResult (results),
+        /// __4 = ValueProp (데미지 출처 정보 — 유물/파워 등),
         /// __5 = Creature (target), __6 = CardModel.
         /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(Creature __2, DamageResult __3, Creature __5, object __6)
+        public static void Postfix(Creature __2, DamageResult __3, object __4, Creature __5, object __6)
         {
             try
             {
@@ -97,36 +98,52 @@ public static class CombatPatches
                 // 독 귀속을 위해 마지막 행동 플레이어 기록
                 PoisonPatches.SetLastActingPlayer(playerId, displayName);
 
-                // 카드 이름 추출 (CardModel, reflection 사용)
+                // 카드 이름 추출 (CardModel → 클래스명 fallback)
                 string cardName = "알 수 없음";
                 try
                 {
                     if (__6 != null)
                     {
+                        // CardModel이 있으면 카드 이름 추출
                         var cardType = __6.GetType();
                         ModEntry.LogDebug($"[DamageMeter] CardModel type: {cardType.FullName}");
 
-                        // Title 프로퍼티 사용 (CardModel.Title = 표시 이름)
+                        // 1) Title 프로퍼티 (로컬라이즈된 이름)
                         var titleProperty = cardType.GetProperty("Title");
                         if (titleProperty != null)
                         {
                             cardName = titleProperty.GetValue(__6)?.ToString() ?? cardName;
                         }
-                        else
+
+                        // 2) Title 실패 시 Id 프로퍼티
+                        if (cardName == "알 수 없음")
                         {
-                            // fallback: Id 프로퍼티
                             var idProperty = cardType.GetProperty("Id");
                             cardName = idProperty?.GetValue(__6)?.ToString() ?? cardName;
+                        }
+
+                        // 3) 그래도 실패 시 클래스명에서 추출
+                        if (cardName == "알 수 없음")
+                        {
+                            cardName = CardNameMap.GetReadableName(cardType);
                         }
                     }
                     else
                     {
-                        ModEntry.LogDebug("[DamageMeter] CardModel (__6) is null");
+                        // CardModel이 null → 비카드 데미지 (파워/렐릭/포션 등)
+                        // ValueProp은 enum(Move, Unblockable 등)이므로 소스 식별 불가.
+                        // 가능한 컨텍스트에서 출처 추출 시도.
+                        cardName = ExtractNonCardDamageSource(__4, dealer);
+                    }
+
+                    if (cardName == "알 수 없음")
+                    {
+                        ModEntry.LogDebug($"[DamageMeter] 소스 추출 실패 - CardModel: {__6 != null}, ValueProp: {__4}");
                     }
                 }
                 catch (Exception cardEx)
                 {
-                    ModEntry.LogDebug($"[DamageMeter] CardModel error: {cardEx.Message}");
+                    ModEntry.LogDebug($"[DamageMeter] CardModel/ValueProp error: {cardEx.Message}");
                 }
 
                 string targetName = target?.Name ?? "알 수 없음";
@@ -145,6 +162,109 @@ public static class CombatPatches
             {
                 ModEntry.LogError($"[DamageMeter] AfterDamageGiven error: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 비카드 데미지의 출처를 추출.
+        /// ValueProp은 enum(Move, Unblockable 등)이므로 직접적인 소스 이름이 없음.
+        /// dealer(Creature)의 파워/렐릭 목록에서 데미지 소스를 추론.
+        /// </summary>
+        private static string ExtractNonCardDamageSource(object valueProp, Creature dealer)
+        {
+            // 1) ValueProp enum 값 확인 (디버그용)
+            var vpStr = valueProp?.ToString() ?? "";
+            ModEntry.LogDebug($"[DamageMeter] Non-card damage. ValueProp={vpStr}, Dealer={dealer?.Name}");
+
+            // 2) dealer의 파워 목록에서 데미지를 주는 파워 탐색
+            if (dealer != null)
+            {
+                try
+                {
+                    var creatureType = dealer.GetType();
+
+                    // Powers/ActivePowers 프로퍼티 탐색
+                    foreach (var propName in new[] { "Powers", "ActivePowers", "Buffs", "PowerInstances" })
+                    {
+                        var prop = creatureType.GetProperty(propName);
+                        if (prop == null) continue;
+
+                        var powers = prop.GetValue(dealer);
+                        if (powers is not System.Collections.IEnumerable enumerable) continue;
+
+                        foreach (var power in enumerable)
+                        {
+                            if (power == null) continue;
+                            var powerType = power.GetType();
+
+                            // 파워의 Title/Name 추출
+                            var titleProp = powerType.GetProperty("Title");
+                            var title = titleProp?.GetValue(power)?.ToString();
+                            if (!string.IsNullOrEmpty(title) && !title.Contains("MegaCrit"))
+                            {
+                                // 데미지를 주는 파워인지 확인 (DamageAmount > 0 등)
+                                var dmgProp = powerType.GetProperty("DamageAmount")
+                                    ?? powerType.GetProperty("Amount");
+                                if (dmgProp != null)
+                                {
+                                    var dmgVal = dmgProp.GetValue(power);
+                                    if (dmgVal is int amt && amt > 0)
+                                    {
+                                        ModEntry.LogDebug($"[DamageMeter] Power source: {title} (Amount={amt})");
+                                        return $"[파워] {title}";
+                                    }
+                                }
+                            }
+
+                            // Title 없으면 클래스명에서 추출
+                            var readable = CardNameMap.GetReadableName(powerType);
+                            if (readable != "알 수 없음")
+                            {
+                                ModEntry.LogDebug($"[DamageMeter] Power source (by type): {readable}");
+                            }
+                        }
+                    }
+
+                    // Player의 렐릭 탐색
+                    var player = dealer.Player;
+                    if (player != null)
+                    {
+                        var playerType = player.GetType();
+                        foreach (var propName in new[] { "Relics", "ActiveRelics", "RelicInstances" })
+                        {
+                            var prop = playerType.GetProperty(propName);
+                            if (prop == null) continue;
+
+                            var relics = prop.GetValue(player);
+                            if (relics is not System.Collections.IEnumerable relicEnum) continue;
+
+                            foreach (var relic in relicEnum)
+                            {
+                                if (relic == null) continue;
+                                var relicType = relic.GetType();
+                                var titleProp = relicType.GetProperty("Title")
+                                    ?? relicType.GetProperty("Name");
+                                var title = titleProp?.GetValue(relic)?.ToString();
+                                if (!string.IsNullOrEmpty(title) && !title.Contains("MegaCrit"))
+                                {
+                                    ModEntry.LogDebug($"[DamageMeter] Relic found: {title}");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ModEntry.LogDebug($"[DamageMeter] Power/Relic scan error: {ex.Message}");
+                }
+            }
+
+            // 3) ValueProp enum 값이라도 표시
+            if (!string.IsNullOrEmpty(vpStr) && vpStr != "0")
+            {
+                return $"[효과] {vpStr}";
+            }
+
+            return "알 수 없음";
         }
     }
 
@@ -209,14 +329,170 @@ public static class CombatPatches
 
                 PoisonPatches.ResetTracking();
                 DamageTracker.Instance.StartCombat(playerList);
+
+                // 로컬 플레이어 탐지
+                DetectLocalPlayer(combatState, playerList);
+
                 ModEntry.Log($"[DamageMeter] Combat started. Tracking {playerList.Count} player(s): " +
-                    string.Join(", ", playerList.Select(p => p.name)));
+                    string.Join(", ", playerList.Select(p => p.name)) +
+                    $" | LocalPlayer: {DamageTracker.Instance.LocalPlayerId}");
             }
             catch (Exception ex)
             {
                 ModEntry.LogError($"[DamageMeter] BeforeCombatStart error: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// 로컬 플레이어를 탐지하여 DamageTracker.LocalPlayerId에 설정.
+        /// 탐지 순서:
+        ///   1) 솔로면 유일한 플레이어
+        ///   2) CombatState에서 LocalPlayerId / LocalPlayer / MyPlayer 프로퍼티 검색
+        ///   3) Player 객체에서 IsLocal/IsMe/IsOwner/IsMine 프로퍼티 검색
+        ///   4) CombatState에서 LocalPlayerIndex 등 인덱스 기반 검색
+        ///   5) fallback: 첫 번째 플레이어
+        /// </summary>
+        private static void DetectLocalPlayer(CombatState combatState, List<(string id, string name)> playerList)
+        {
+            try
+            {
+                // 솔로면 바로 설정
+                if (playerList.Count <= 1)
+                {
+                    if (playerList.Count == 1)
+                        DamageTracker.Instance.LocalPlayerId = playerList[0].id;
+                    return;
+                }
+
+                // 이미 설정되어 있고 유효하면 유지
+                var current = DamageTracker.Instance.LocalPlayerId;
+                if (!string.IsNullOrEmpty(current) && playerList.Any(p => p.id == current))
+                    return;
+
+                var csType = combatState.GetType();
+                var players = combatState.Players;
+
+                // 1) CombatState에서 LocalPlayerId 검색
+                foreach (var propName in new[] { "LocalPlayerId", "LocalPlayer", "MyPlayer", "LocalNetId" })
+                {
+                    var prop = csType.GetProperty(propName);
+                    if (prop != null)
+                    {
+                        var val = prop.GetValue(combatState);
+                        if (val != null)
+                        {
+                            string localId = val.ToString() ?? "";
+                            // Player 객체면 NetId 추출
+                            var netIdProp = val.GetType().GetProperty("NetId");
+                            if (netIdProp != null)
+                                localId = netIdProp.GetValue(val)?.ToString() ?? localId;
+
+                            if (playerList.Any(p => p.id == localId))
+                            {
+                                DamageTracker.Instance.LocalPlayerId = localId;
+                                ModEntry.Log($"[DamageMeter] Local player detected via CombatState.{propName}: {localId}");
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // 2) Player 객체에서 IsLocal 등 검색
+                if (players != null)
+                {
+                    foreach (var player in players)
+                    {
+                        if (player == null) continue;
+                        var pType = player.GetType();
+
+                        foreach (var propName in new[] { "IsLocal", "IsMe", "IsOwner", "IsMine", "IsHost" })
+                        {
+                            var prop = pType.GetProperty(propName);
+                            if (prop != null && prop.PropertyType == typeof(bool))
+                            {
+                                bool isLocal = (bool)(prop.GetValue(player) ?? false);
+                                if (isLocal)
+                                {
+                                    string id = player.NetId.ToString();
+                                    DamageTracker.Instance.LocalPlayerId = id;
+                                    ModEntry.Log($"[DamageMeter] Local player detected via Player.{propName}: {id}");
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3) CombatState에서 인덱스 기반 검색
+                foreach (var propName in new[] { "LocalPlayerIndex", "MyPlayerIndex" })
+                {
+                    var prop = csType.GetProperty(propName);
+                    if (prop != null && (prop.PropertyType == typeof(int) || prop.PropertyType == typeof(long)))
+                    {
+                        var val = prop.GetValue(combatState);
+                        if (val != null)
+                        {
+                            int idx = Convert.ToInt32(val);
+                            if (idx >= 0 && idx < playerList.Count)
+                            {
+                                DamageTracker.Instance.LocalPlayerId = playerList[idx].id;
+                                ModEntry.Log($"[DamageMeter] Local player detected via CombatState.{propName}={idx}: {playerList[idx].id}");
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // 디버그: CombatState + Player 프로퍼티 로깅 (최초 1회)
+                if (!_playerPropsLogged)
+                {
+                    _playerPropsLogged = true;
+
+                    // CombatState 프로퍼티 로깅
+                    ModEntry.Log($"[DamageMeter] CombatState type: {csType.FullName}");
+                    foreach (var prop in csType.GetProperties())
+                    {
+                        try
+                        {
+                            var val = prop.GetValue(combatState);
+                            ModEntry.Log($"[DamageMeter]   CS.{prop.Name} ({prop.PropertyType.Name}) = {val}");
+                        }
+                        catch { }
+                    }
+
+                    // Player 프로퍼티 로깅
+                    if (players != null && players.Count > 0)
+                    {
+                        var firstPlayer = players[0];
+                        if (firstPlayer != null)
+                        {
+                            ModEntry.Log($"[DamageMeter] Player type: {firstPlayer.GetType().FullName}");
+                            foreach (var prop in firstPlayer.GetType().GetProperties())
+                            {
+                                try
+                                {
+                                    var val = prop.GetValue(firstPlayer);
+                                    ModEntry.Log($"[DamageMeter]   Player.{prop.Name} ({prop.PropertyType.Name}) = {val}");
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+
+                // 4) fallback: 첫 번째 플레이어
+                DamageTracker.Instance.LocalPlayerId = playerList[0].id;
+                ModEntry.Log($"[DamageMeter] Local player fallback to first: {playerList[0].id} ({playerList[0].name})");
+            }
+            catch (Exception ex)
+            {
+                ModEntry.LogError($"[DamageMeter] DetectLocalPlayer error: {ex.Message}");
+                if (playerList.Count > 0)
+                    DamageTracker.Instance.LocalPlayerId = playerList[0].id;
+            }
+        }
+
+        private static bool _playerPropsLogged;
     }
 
     /// ---------------------------------------------------------------
@@ -292,18 +568,46 @@ public static class CombatPatches
             return method;
         }
 
+        /// <summary>
+        /// __1 = CombatSide (enum: Player=0, Monster=1 등)
+        /// 플레이어턴 + 적턴 = 1라운드. 적턴 종료 시에만 턴 카운트 증가.
+        /// </summary>
         [HarmonyPostfix]
-        public static void Postfix()
+        public static void Postfix(object __1)
         {
             try
             {
+                // CombatSide를 문자열로 변환하여 판별
+                string side = __1?.ToString() ?? "";
+
+                // 디버그: CombatSide 값 로깅 (최초 2회)
+                if (_turnEndLogCount < 2)
+                {
+                    _turnEndLogCount++;
+                    ModEntry.Log($"[DamageMeter] AfterTurnEnd CombatSide = '{side}' (type: {__1?.GetType().FullName})");
+                }
+
+                // 적 턴 종료 시에만 라운드 증가 (플레이어턴 + 적턴 = 1턴)
+                // CombatSide enum: "Player" 또는 "Monster"/"Enemy" 등
+                bool isPlayerTurnEnd = side.Contains("Player", StringComparison.OrdinalIgnoreCase);
+
+                if (isPlayerTurnEnd)
+                {
+                    // 플레이어 턴 종료 → 턴당 데미지만 리셋 (라운드 카운트 올리지 않음)
+                    ModEntry.LogDebug($"[DamageMeter] Player turn ended (turn {DamageTracker.Instance.CombatTurn})");
+                    return;
+                }
+
+                // 적 턴 종료 → 라운드 카운트 증가 + 턴당 데미지 리셋
                 DamageTracker.Instance.OnTurnEnd();
-                ModEntry.LogDebug($"[DamageMeter] Turn ended. Now turn {DamageTracker.Instance.CombatTurn}");
+                ModEntry.LogDebug($"[DamageMeter] Round ended. Now turn {DamageTracker.Instance.CombatTurn}");
             }
             catch (Exception ex)
             {
                 ModEntry.LogError($"[DamageMeter] AfterTurnEnd error: {ex.Message}");
             }
         }
+
+        private static int _turnEndLogCount;
     }
 }
