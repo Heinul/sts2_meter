@@ -551,6 +551,82 @@ public static class CombatPatches
     }
 
     /// ---------------------------------------------------------------
+    /// 패치 3b: AfterCardPlayed — 카드 사용 후 (모든 카드 — 공격/방어/파워/스킬)
+    /// ---------------------------------------------------------------
+    /// 파라미터 순서:
+    ///   0: CombatState
+    ///   1: PlayerChoiceContext
+    ///   2: CardPlay  (CardPlay.Card = CardModel, CardPlay.Target = Creature)
+    ///
+    /// CardModel 참조를 캐시하여 호버 팁에서 사용.
+    /// AfterDamageGiven에서는 공격카드만 캐시되므로, 여기서 모든 카드를 캐시.
+    [HarmonyPatch]
+    public static class AfterCardPlayedPatch
+    {
+        [HarmonyTargetMethod]
+        public static MethodBase TargetMethod()
+        {
+            var hookType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook");
+            if (hookType == null)
+                throw new InvalidOperationException("[DamageMeter] Hook type not found");
+
+            var method = AccessTools.Method(hookType, "AfterCardPlayed");
+            if (method == null)
+                throw new InvalidOperationException("[DamageMeter] Hook.AfterCardPlayed not found");
+
+            ModEntry.Log("[DamageMeter] Found Hook.AfterCardPlayed");
+            return method;
+        }
+
+        /// <summary>
+        /// __2 = CardPlay (Card, Target, PlayIndex 등)
+        /// CardPlay.Card에서 CardModel 참조를 가져와 캐시.
+        /// </summary>
+        [HarmonyPostfix]
+        public static void Postfix(object __2)
+        {
+            try
+            {
+                if (__2 == null) return;
+
+                // CardPlay.Card → CardModel
+                var cardProp = __2.GetType().GetProperty("Card");
+                if (cardProp == null) return;
+
+                var cardModel = cardProp.GetValue(__2);
+                if (cardModel == null) return;
+
+                // 카드 이름 추출
+                string cardName = "알 수 없음";
+                var cardType = cardModel.GetType();
+
+                var titleProp = cardType.GetProperty("Title");
+                if (titleProp != null)
+                    cardName = titleProp.GetValue(cardModel)?.ToString() ?? cardName;
+
+                if (cardName == "알 수 없음")
+                {
+                    var idProp = cardType.GetProperty("Id");
+                    cardName = idProp?.GetValue(cardModel)?.ToString() ?? cardName;
+                }
+
+                if (cardName == "알 수 없음")
+                    cardName = CardNameMap.GetReadableName(cardType);
+
+                if (cardName != "알 수 없음")
+                {
+                    DamageTracker.Instance.CacheCardModel(cardName, cardModel);
+                    ModEntry.LogDebug($"[DamageMeter] CardModel cached via AfterCardPlayed: {cardName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                ModEntry.LogDebug($"[DamageMeter] AfterCardPlayed cache error: {ex.Message}");
+            }
+        }
+    }
+
+    /// ---------------------------------------------------------------
     /// 패치 4: AfterTurnEnd — 턴 종료
     /// ---------------------------------------------------------------
     /// 파라미터 순서:

@@ -101,7 +101,10 @@ public partial class DamageMeterOverlay : CanvasLayer
     // 카드 호버 팁 (게임 내장 시스템)
     private Control? _activeHoverTipSet;
     private static Type? _hoverTipSetType;
-    private static MethodInfo? _createAndShowMethod;
+    private static MethodInfo? _createAndShowMethod;   // CreateAndShow(Control, IHoverTip, alignment)
+    private static MethodInfo? _fromCardMethod;        // HoverTipFactory.FromCard(CardModel, bool)
+    private static MethodInfo? _clearMethod;           // NHoverTipSet.Clear()
+    private static object? _alignRight;                // HoverTipAlignment.Right
     private static bool _hoverTipSystemChecked;
 
     public override void _Ready()
@@ -1608,7 +1611,7 @@ public partial class DamageMeterOverlay : CanvasLayer
 
     /// <summary>
     /// 게임 내장 호버 팁 시스템을 초기화.
-    /// NHoverTipSet.CreateAndShow 메서드를 리플렉션으로 찾음.
+    /// HoverTipFactory.FromCard, NHoverTipSet.CreateAndShow, Clear 메서드를 리플렉션으로 찾음.
     /// </summary>
     private static void InitHoverTipSystem()
     {
@@ -1617,30 +1620,60 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         try
         {
+            // 1. NHoverTipSet 타입 & CreateAndShow(Control, IHoverTip, alignment)
             _hoverTipSetType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Nodes.HoverTips.NHoverTipSet");
             if (_hoverTipSetType == null)
             {
-                ModEntry.LogWarning("[DamageMeter] NHoverTipSet type not found - hover tips disabled");
+                ModEntry.LogWarning("[DamageMeter] NHoverTipSet type not found");
                 return;
             }
 
-            // CreateAndShow(Control owner, IEnumerable<IHoverTip> tips, HoverTipAlignment alignment)
+            var iHoverTipType = AccessTools.TypeByName("MegaCrit.Sts2.Core.HoverTips.IHoverTip");
+
             foreach (var method in _hoverTipSetType.GetMethods(BindingFlags.Public | BindingFlags.Static))
             {
-                if (method.Name != "CreateAndShow") continue;
-                var pars = method.GetParameters();
-                if (pars.Length == 3 && pars[0].ParameterType == typeof(Control))
+                if (method.Name == "CreateAndShow")
                 {
-                    _createAndShowMethod = method;
-                    ModEntry.Log($"[DamageMeter] HoverTip system initialized: {method}");
-                    break;
+                    var pars = method.GetParameters();
+                    // 단일 IHoverTip 오버로드 선택 (IEnumerable 아님)
+                    if (pars.Length == 3 && pars[0].ParameterType == typeof(Control)
+                        && iHoverTipType != null && pars[1].ParameterType == iHoverTipType)
+                    {
+                        _createAndShowMethod = method;
+                    }
+                }
+                else if (method.Name == "Clear" && method.GetParameters().Length == 0)
+                {
+                    _clearMethod = method;
                 }
             }
 
-            if (_createAndShowMethod == null)
+            // 2. HoverTipFactory.FromCard(CardModel, bool)
+            var factoryType = AccessTools.TypeByName("MegaCrit.Sts2.Core.HoverTips.HoverTipFactory");
+            if (factoryType != null)
             {
-                ModEntry.LogWarning("[DamageMeter] NHoverTipSet.CreateAndShow method not found");
+                var cardModelType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Models.CardModel");
+                foreach (var method in factoryType.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                {
+                    if (method.Name != "FromCard") continue;
+                    var pars = method.GetParameters();
+                    if (pars.Length == 2 && pars[0].ParameterType == cardModelType
+                        && pars[1].ParameterType == typeof(bool))
+                    {
+                        _fromCardMethod = method;
+                        break;
+                    }
+                }
             }
+
+            // 3. HoverTipAlignment.Right (enum value 1)
+            var alignType = AccessTools.TypeByName("MegaCrit.Sts2.Core.HoverTips.HoverTipAlignment");
+            if (alignType != null)
+            {
+                _alignRight = Enum.ToObject(alignType, 1);
+            }
+
+            ModEntry.Log($"[DamageMeter] HoverTip init: CreateAndShow={_createAndShowMethod != null}, FromCard={_fromCardMethod != null}, Clear={_clearMethod != null}, Align={_alignRight != null}");
         }
         catch (Exception ex)
         {
@@ -1655,7 +1688,11 @@ public partial class DamageMeterOverlay : CanvasLayer
     private void AttachCardHoverTip(Control row, string cardName)
     {
         InitHoverTipSystem();
-        if (_createAndShowMethod == null) return;
+        if (_createAndShowMethod == null || _fromCardMethod == null || _alignRight == null) return;
+
+        // HBoxContainer 기본 MouseFilter는 Ignore → 마우스 이벤트 수신 불가
+        // Pass로 변경하여 MouseEntered/MouseExited 이벤트를 받을 수 있게 함
+        row.MouseFilter = Control.MouseFilterEnum.Pass;
 
         row.MouseEntered += () => ShowCardHoverTip(row, cardName);
         row.MouseExited += () => HideCardHoverTip();
@@ -1669,28 +1706,29 @@ public partial class DamageMeterOverlay : CanvasLayer
         try
         {
             var cardModel = DamageTracker.Instance.GetCachedCardModel(cardName);
-            if (cardModel == null) return;
+            if (cardModel == null)
+            {
+                ModEntry.LogDebug($"[DamageMeter] HoverTip: no cached CardModel for '{cardName}'");
+                return;
+            }
 
-            // CardModel.HoverTips 가져오기
-            var hoverTipsProp = cardModel.GetType().GetProperty("HoverTips");
-            if (hoverTipsProp == null) return;
+            // HoverTipFactory.FromCard(cardModel, false) → IHoverTip
+            var hoverTip = _fromCardMethod!.Invoke(null, new object[] { cardModel, false });
+            if (hoverTip == null)
+            {
+                ModEntry.LogDebug($"[DamageMeter] HoverTip: FromCard returned null for '{cardName}'");
+                return;
+            }
 
-            var hoverTips = hoverTipsProp.GetValue(cardModel);
-            if (hoverTips == null) return;
-
-            // HoverTipAlignment enum 값 (0 = Left, 1 = Right, 2 = Above, 3 = Below)
-            var alignType = AccessTools.TypeByName("MegaCrit.Sts2.Core.HoverTips.HoverTipAlignment");
-            if (alignType == null) return;
-
-            var alignRight = Enum.ToObject(alignType, 1); // Right
-
-            // NHoverTipSet.CreateAndShow(ownerControl, hoverTips, alignment)
-            var result = _createAndShowMethod!.Invoke(null, new object[] { ownerControl, hoverTips, alignRight });
+            // NHoverTipSet.CreateAndShow(ownerControl, hoverTip, HoverTipAlignment.Right)
+            var result = _createAndShowMethod!.Invoke(null, new object[] { ownerControl, hoverTip, _alignRight! });
             _activeHoverTipSet = result as Control;
         }
         catch (Exception ex)
         {
-            ModEntry.LogDebug($"[DamageMeter] ShowCardHoverTip error: {ex.Message}");
+            ModEntry.LogDebug($"[DamageMeter] ShowCardHoverTip error for '{cardName}': {ex.Message}");
+            if (ex.InnerException != null)
+                ModEntry.LogDebug($"  Inner: {ex.InnerException.Message}");
         }
     }
 
@@ -1698,10 +1736,8 @@ public partial class DamageMeterOverlay : CanvasLayer
     {
         try
         {
-            if (_activeHoverTipSet != null && IsInstanceValid(_activeHoverTipSet))
-            {
-                _activeHoverTipSet.QueueFree();
-            }
+            // NHoverTipSet.Clear() 사용 (게임 내장 정리 로직)
+            _clearMethod?.Invoke(null, null);
         }
         catch { }
         _activeHoverTipSet = null;
