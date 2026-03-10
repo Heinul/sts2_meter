@@ -52,7 +52,7 @@ public partial class DamageMeterOverlay : CanvasLayer
     private Control[] _tabContents = null!;
     private Button[] _tabButtons = null!;
     private int _activeTab;
-    private static readonly string[] TabNames = { "미터", "카드로그", "받은피해" };
+    private static readonly string[] TabNames = { L10N.TabMeter, L10N.TabCardLog, L10N.TabReceived };
 
     // 탭별 컨텐츠
     private VBoxContainer _meterRows = null!;
@@ -149,7 +149,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         headerContainer.CustomMinimumSize = new Vector2(0, HEADER_HEIGHT);
         headerContainer.AddThemeConstantOverride("separation", 4);
 
-        _titleLabel = CreateLabel("데미지 미터", 13, TextColor);
+        _titleLabel = CreateLabel(L10N.Title, 13, TextColor);
         _titleLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _titleLabel.ClipText = true;
         headerContainer.AddChild(_titleLabel);
@@ -218,11 +218,11 @@ public partial class DamageMeterOverlay : CanvasLayer
         var colHeader = new HBoxContainer();
         colHeader.CustomMinimumSize = new Vector2(0, 20);
 
-        var nameCol = CreateLabel("플레이어", 10, SubTextColor);
+        var nameCol = CreateLabel(L10N.HeaderPlayer, 10, SubTextColor);
         nameCol.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         colHeader.AddChild(nameCol);
 
-        var dmgCol = CreateLabel("데미지", 10, SubTextColor);
+        var dmgCol = CreateLabel(L10N.HeaderDamage, 10, SubTextColor);
         dmgCol.CustomMinimumSize = new Vector2(70, 0);
         dmgCol.HorizontalAlignment = HorizontalAlignment.Right;
         colHeader.AddChild(dmgCol);
@@ -269,27 +269,27 @@ public partial class DamageMeterOverlay : CanvasLayer
         _cardLogFilterBar.CustomMinimumSize = new Vector2(0, 24);
 
         // 턴 필터
-        var turnLabel = CreateLabel("턴:", 9, SubTextColor);
+        var turnLabel = CreateLabel(L10N.FilterTurnLabel, 9, SubTextColor);
         _cardLogFilterBar.AddChild(turnLabel);
 
         _turnFilterOption = new OptionButton();
         _turnFilterOption.AddThemeFontSizeOverride("font_size", 9);
         _turnFilterOption.CustomMinimumSize = new Vector2(65, 22);
         _turnFilterOption.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        _turnFilterOption.AddItem("전체", 0);
+        _turnFilterOption.AddItem(L10N.FilterAll, 0);
         _turnFilterOption.ItemSelected += OnTurnFilterChanged;
         ApplyOptionButtonStyle(_turnFilterOption);
         _cardLogFilterBar.AddChild(_turnFilterOption);
 
         // 플레이어 필터
-        var playerLabel = CreateLabel("플레이어:", 9, SubTextColor);
+        var playerLabel = CreateLabel(L10N.FilterPlayerLabel, 9, SubTextColor);
         _cardLogFilterBar.AddChild(playerLabel);
 
         _playerFilterOption = new OptionButton();
         _playerFilterOption.AddThemeFontSizeOverride("font_size", 9);
         _playerFilterOption.CustomMinimumSize = new Vector2(75, 22);
         _playerFilterOption.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        _playerFilterOption.AddItem("전체", 0);
+        _playerFilterOption.AddItem(L10N.FilterAll, 0);
         _playerFilterOption.ItemSelected += OnPlayerFilterChanged;
         ApplyOptionButtonStyle(_playerFilterOption);
         _cardLogFilterBar.AddChild(_playerFilterOption);
@@ -376,7 +376,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         // 턴 필터 갱신 (선택값 유지)
         int prevTurn = _cardLogFilterTurn;
         _turnFilterOption.Clear();
-        _turnFilterOption.AddItem("전체");
+        _turnFilterOption.AddItem(L10N.FilterAll);
         _turnFilterOption.SetItemMetadata(0, "");
         int selectTurnIdx = 0;
 
@@ -393,7 +393,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         // 플레이어 필터 갱신 (선택값 유지)
         string prevPlayer = _cardLogFilterPlayerId;
         _playerFilterOption.Clear();
-        _playerFilterOption.AddItem("전체");
+        _playerFilterOption.AddItem(L10N.FilterAll);
         _playerFilterOption.SetItemMetadata(0, "");
         int selectPlayerIdx = 0;
 
@@ -414,7 +414,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         _footerSeparator = new HSeparator();
         _rootContainer.AddChild(_footerSeparator);
 
-        _footerLabel = CreateLabel("턴: 0  |  총합: 0", 11, SubTextColor);
+        _footerLabel = CreateLabel(L10N.FooterInitial, 11, SubTextColor);
         _footerLabel.HorizontalAlignment = HorizontalAlignment.Center;
         _rootContainer.AddChild(_footerLabel);
     }
@@ -430,7 +430,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         var grip = new ColorRect();
         grip.Color = new Color(0.5f, 0.4f, 0.2f, 0.4f);
         grip.CustomMinimumSize = new Vector2(RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE);
-        grip.TooltipText = "드래그하여 크기 조절";
+        grip.TooltipText = L10N.ResizeTooltip;
         _resizeHandleRow.AddChild(grip);
 
         _rootContainer.AddChild(_resizeHandleRow);
@@ -677,7 +677,7 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         if (snapshot.Count == 0)
         {
-            _titleLabel.Text = "데미지 미터 | 대기중";
+            _titleLabel.Text = L10N.TitleWaiting;
             return;
         }
 
@@ -718,7 +718,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         }
         else
         {
-            _titleLabel.Text = $"데미지 미터 | T{turn}";
+            _titleLabel.Text = L10N.TitleTurn(turn);
         }
     }
 
@@ -738,12 +738,12 @@ public partial class DamageMeterOverlay : CanvasLayer
         int grandTotal = 0;
         foreach (var s in snapshot) grandTotal += s.TotalDamage;
 
-        _footerLabel.Text = $"턴: {turn}  |  총합: {grandTotal:N0}";
+        _footerLabel.Text = L10N.Footer(turn, grandTotal.ToString("N0"));
 
         if (!DamageTracker.Instance.IsActive && grandTotal > 0)
-            _titleLabel.Text = "데미지 미터 (완료)";
+            _titleLabel.Text = L10N.TitleDone;
         else
-            _titleLabel.Text = "데미지 미터";
+            _titleLabel.Text = L10N.Title;
     }
 
     // ----- 탭 0: 미터 -----
@@ -754,7 +754,7 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         if (snapshot.Count == 0)
         {
-            var emptyLabel = CreateLabel("전투 대기중...", 11, SubTextColor);
+            var emptyLabel = CreateLabel(L10N.EmptyWaiting, 11, SubTextColor);
             emptyLabel.HorizontalAlignment = HorizontalAlignment.Center;
             _meterRows.AddChild(emptyLabel);
             return;
@@ -810,13 +810,13 @@ public partial class DamageMeterOverlay : CanvasLayer
         // 상세 통계
         var parts = new List<string>();
         if (entry.CurrentTurnDamage > 0)
-            parts.Add($"이번턴: {entry.CurrentTurnDamage:N0}");
+            parts.Add(L10N.StatThisTurn(entry.CurrentTurnDamage.ToString("N0")));
         if (entry.DamagePerTurn > 0)
-            parts.Add($"턴당: {entry.DamagePerTurn:F1}");
+            parts.Add(L10N.StatPerTurn(entry.DamagePerTurn.ToString("F1")));
         if (entry.MaxSingleHit > 0)
-            parts.Add($"최대: {entry.MaxSingleHit:N0}");
+            parts.Add(L10N.StatMax(entry.MaxSingleHit.ToString("N0")));
         if (entry.PoisonDamage > 0)
-            parts.Add($"독: {entry.PoisonDamage:N0}");
+            parts.Add(L10N.StatPoison(entry.PoisonDamage.ToString("N0")));
 
         if (parts.Count > 0)
         {
@@ -877,7 +877,7 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         if (filteredList.Count == 0)
         {
-            var emptyText = cardEvents.Count > 0 ? "필터 조건에 맞는 로그가 없습니다." : "카드 로그가 없습니다.";
+            var emptyText = cardEvents.Count > 0 ? L10N.EmptyFilterNoMatch : L10N.EmptyCardLog;
             var emptyLabel = CreateLabel(emptyText, 11, SubTextColor);
             emptyLabel.HorizontalAlignment = HorizontalAlignment.Center;
             _cardLogRows.AddChild(emptyLabel);
@@ -898,9 +898,9 @@ public partial class DamageMeterOverlay : CanvasLayer
                 else if (evt.EventType == CombatEventType.BlockGained)
                     totalBlock += evt.Damage;
             }
-            var summaryParts = new List<string> { $"{count}건" };
-            if (totalDmg > 0) summaryParts.Add($"데미지:{totalDmg:N0}");
-            if (totalBlock > 0) summaryParts.Add($"블록:{totalBlock:N0}");
+            var summaryParts = new List<string> { L10N.CountItems(count) };
+            if (totalDmg > 0) summaryParts.Add(L10N.DamageValue(totalDmg.ToString("N0")));
+            if (totalBlock > 0) summaryParts.Add(L10N.BlockValue(totalBlock.ToString("N0")));
             var summaryLabel = CreateLabel(string.Join(" | ", summaryParts), 9, SubTextColor);
             summaryLabel.HorizontalAlignment = HorizontalAlignment.Center;
             _cardLogRows.AddChild(summaryLabel);
@@ -1014,7 +1014,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         summaryRow.AddChild(infoLabel);
 
         // 총 데미지
-        var killText = anyKill ? " 처치!" : "";
+        var killText = anyKill ? L10N.Kill : "";
         var dmgColor = anyKill ? new Color(1f, 0.4f, 0.4f) : TextColor;
         var dmgLabel = CreateLabel($"{totalDmg:N0}{killText}", 10, dmgColor);
         dmgLabel.HorizontalAlignment = HorizontalAlignment.Right;
@@ -1046,7 +1046,7 @@ public partial class DamageMeterOverlay : CanvasLayer
             hitRow.AddChild(tgtLabel);
 
             // 개별 데미지
-            var hitKill = hit.WasKill ? " 처치!" : "";
+            var hitKill = hit.WasKill ? L10N.Kill : "";
             var hitColor = hit.WasKill ? new Color(1f, 0.4f, 0.4f) : SubTextColor;
             var hitDmgLabel = CreateLabel($"{hit.Damage:N0}{hitKill}", 9, hitColor);
             hitDmgLabel.HorizontalAlignment = HorizontalAlignment.Right;
@@ -1114,7 +1114,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         {
             case CombatEventType.DamageDealt:
             {
-                var killText = evt.WasKill ? " 처치!" : "";
+                var killText = evt.WasKill ? L10N.Kill : "";
                 var infoLabel = CreateLabel($"{evt.CardName} → {evt.TargetName}", 10, TextColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
@@ -1144,7 +1144,7 @@ public partial class DamageMeterOverlay : CanvasLayer
             }
             case CombatEventType.PoisonDamage:
             {
-                var infoLabel = CreateLabel($"독 → {evt.TargetName}", 10, PoisonColor);
+                var infoLabel = CreateLabel(L10N.PoisonTarget(evt.TargetName), 10, PoisonColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
                 infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
@@ -1191,7 +1191,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         // 상단: 플레이어별 요약
         if (snapshot.Count > 0)
         {
-            var summaryHeader = CreateLabel("── 플레이어별 받은 피해 ──", 10, SubTextColor);
+            var summaryHeader = CreateLabel(L10N.ReceivedHeader, 10, SubTextColor);
             summaryHeader.HorizontalAlignment = HorizontalAlignment.Center;
             _receivedRows.AddChild(summaryHeader);
 
@@ -1211,7 +1211,7 @@ public partial class DamageMeterOverlay : CanvasLayer
 
                 if (player.DeathCount > 0)
                 {
-                    var deathLabel = CreateLabel($"사망:{player.DeathCount}", 10, new Color(1f, 0.3f, 0.3f));
+                    var deathLabel = CreateLabel(L10N.DeathCount(player.DeathCount), 10, new Color(1f, 0.3f, 0.3f));
                     row.AddChild(deathLabel);
                 }
 
@@ -1219,7 +1219,7 @@ public partial class DamageMeterOverlay : CanvasLayer
 
                 // 받은피해 / 막은피해 / 실제피해
                 int unblocked = player.TotalDamageReceived - player.TotalBlockedReceived;
-                var detailText = $"  받은피해: {player.TotalDamageReceived:N0}  |  막은피해: {player.TotalBlockedReceived:N0}  |  실제: {unblocked:N0}";
+                var detailText = L10N.ReceivedDetail(player.TotalDamageReceived.ToString("N0"), player.TotalBlockedReceived.ToString("N0"), unblocked.ToString("N0"));
                 var detailLabel = CreateLabel(detailText, 9, SubTextColor);
                 container.AddChild(detailLabel);
 
@@ -1237,7 +1237,7 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         if (receivedLog.Count == 0)
         {
-            var emptyLabel = CreateLabel("받은 피해 기록이 없습니다.", 11, SubTextColor);
+            var emptyLabel = CreateLabel(L10N.EmptyReceived, 11, SubTextColor);
             emptyLabel.HorizontalAlignment = HorizontalAlignment.Center;
             _receivedRows.AddChild(emptyLabel);
             return;
@@ -1270,10 +1270,10 @@ public partial class DamageMeterOverlay : CanvasLayer
         row.AddChild(sourceLabel);
 
         // 피해 표시: 총피해 (막힘:X)
-        var deathText = isDeath ? " 사망!" : "";
+        var deathText = isDeath ? L10N.DeathBang : "";
         string dmgText;
         if (evt.BlockedDamage > 0)
-            dmgText = $"{evt.Damage:N0} (막힘:{evt.BlockedDamage}){deathText}";
+            dmgText = $"{evt.Damage:N0} {L10N.BlockedSuffix(evt.BlockedDamage)}{deathText}";
         else
             dmgText = $"{evt.Damage:N0}{deathText}";
 
@@ -1305,7 +1305,7 @@ public partial class DamageMeterOverlay : CanvasLayer
         else
         {
             _minBtn.Text = "−";
-            _titleLabel.Text = "데미지 미터";
+            _titleLabel.Text = L10N.Title;
             _needsUpdate = true;
             _needsLogUpdate = true;
         }

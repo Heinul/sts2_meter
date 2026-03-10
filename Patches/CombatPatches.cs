@@ -98,7 +98,7 @@ public static class CombatPatches
                 PoisonPatches.SetLastActingPlayer(playerId, displayName);
 
                 // 카드 이름 추출 (CardModel → 클래스명 fallback)
-                string cardName = "알 수 없음";
+                string cardName = L10N.Unknown;
                 try
                 {
                     if (__6 != null)
@@ -115,14 +115,14 @@ public static class CombatPatches
                         }
 
                         // 2) Title 실패 시 Id 프로퍼티
-                        if (cardName == "알 수 없음")
+                        if (cardName == L10N.Unknown)
                         {
                             var idProperty = cardType.GetProperty("Id");
                             cardName = idProperty?.GetValue(__6)?.ToString() ?? cardName;
                         }
 
                         // 3) 그래도 실패 시 클래스명에서 추출
-                        if (cardName == "알 수 없음")
+                        if (cardName == L10N.Unknown)
                         {
                             cardName = CardNameMap.GetReadableName(cardType);
                         }
@@ -135,7 +135,7 @@ public static class CombatPatches
                         cardName = ExtractNonCardDamageSource(__4, dealer);
                     }
 
-                    if (cardName == "알 수 없음")
+                    if (cardName == L10N.Unknown)
                     {
                         ModEntry.LogDebug($"[DamageMeter] 소스 추출 실패 - CardModel: {__6 != null}, ValueProp: {__4}");
                     }
@@ -146,12 +146,12 @@ public static class CombatPatches
                 }
 
                 // CardModel 참조 캐시 (호버 팁용)
-                if (__6 != null && cardName != "알 수 없음")
+                if (__6 != null && cardName != L10N.Unknown)
                 {
                     DamageTracker.Instance.CacheCardModel(cardName, __6);
                 }
 
-                string targetName = target?.Name ?? "알 수 없음";
+                string targetName = target?.Name ?? L10N.Unknown;
 
                 // 카드 데미지 로그 기록
                 DamageTracker.Instance.RecordCardDamage(
@@ -215,14 +215,14 @@ public static class CombatPatches
                                     if (dmgVal is int amt && amt > 0)
                                     {
                                         ModEntry.LogDebug($"[DamageMeter] Power source: {title} (Amount={amt})");
-                                        return $"[파워] {title}";
+                                        return L10N.PowerPrefix(title);
                                     }
                                 }
                             }
 
                             // Title 없으면 클래스명에서 추출
                             var readable = CardNameMap.GetReadableName(powerType);
-                            if (readable != "알 수 없음")
+                            if (readable != L10N.Unknown)
                             {
                                 ModEntry.LogDebug($"[DamageMeter] Power source (by type): {readable}");
                             }
@@ -266,10 +266,10 @@ public static class CombatPatches
             // 3) ValueProp enum 값이라도 표시
             if (!string.IsNullOrEmpty(vpStr) && vpStr != "0")
             {
-                return $"[효과] {vpStr}";
+                return L10N.EffectPrefix(vpStr);
             }
 
-            return "알 수 없음";
+            return L10N.Unknown;
         }
     }
 
@@ -587,23 +587,23 @@ public static class CombatPatches
                 if (cardModel == null) return;
 
                 // 카드 이름 추출
-                string cardName = "알 수 없음";
+                string cardName = L10N.Unknown;
                 var cardType = cardModel.GetType();
 
                 var titleProp = cardType.GetProperty("Title");
                 if (titleProp != null)
                     cardName = titleProp.GetValue(cardModel)?.ToString() ?? cardName;
 
-                if (cardName == "알 수 없음")
+                if (cardName == L10N.Unknown)
                 {
                     var idProp = cardType.GetProperty("Id");
                     cardName = idProp?.GetValue(cardModel)?.ToString() ?? cardName;
                 }
 
-                if (cardName == "알 수 없음")
+                if (cardName == L10N.Unknown)
                     cardName = CardNameMap.GetReadableName(cardType);
 
-                if (cardName != "알 수 없음")
+                if (cardName != L10N.Unknown)
                 {
                     DamageTracker.Instance.CacheCardModel(cardName, cardModel);
                     ModEntry.LogDebug($"[DamageMeter] CardModel cached via AfterCardPlayed: {cardName}");

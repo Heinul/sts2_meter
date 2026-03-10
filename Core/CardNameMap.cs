@@ -28,7 +28,7 @@ public static class CardNameMap
     /// </summary>
     public static string GetReadableName(string typeName)
     {
-        if (string.IsNullOrEmpty(typeName)) return "알 수 없음";
+        if (string.IsNullOrEmpty(typeName)) return L10N.Unknown;
 
         // 네임스페이스 제거
         var name = typeName.Contains('.') ? typeName.Split('.').Last() : typeName;
