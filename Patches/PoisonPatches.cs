@@ -2,6 +2,7 @@ using System.Reflection;
 using HarmonyLib;
 using DamageMeterMod.Core;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Models;
 
 namespace DamageMeterMod.Patches;
 
@@ -71,25 +72,21 @@ public static class PoisonPatches
 
         /// <summary>
         /// Typed params:
-        ///   __1 = PowerModel power (object → reflection으로 Name/Owner 접근)
+        ///   __1 = PowerModel power (직접 타이핑)
         ///   __2 = Decimal amount (변경 후 현재 수치)
         ///   __3 = Creature applier (독을 건 플레이어, 틱 시 null 가능)
         /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(object __1, decimal __2, Creature __3)
+        public static void Postfix(PowerModel __1, decimal __2, Creature __3)
         {
             try
             {
                 if (!DamageTracker.Instance.IsActive) return;
                 if (__1 == null) return;
 
-                var powerType = __1.GetType();
-
-                // === 파워 이름 확인 ===
-                var nameProp = powerType.GetProperty("Name")
-                    ?? powerType.GetProperty("PowerName")
-                    ?? powerType.GetProperty("Id");
-                string powerName = nameProp?.GetValue(__1)?.ToString() ?? "";
+                // === 파워 이름 확인 (LocString → 로컬라이즈된 이름) ===
+                string powerName = CombatPatches.AfterDamageGivenPatch.GetLocStringText(__1.Title)
+                    ?? __1.GetType().Name;
 
                 if (string.IsNullOrEmpty(powerName)) return;
                 if (!powerName.Contains("Poison", StringComparison.OrdinalIgnoreCase) &&
@@ -97,41 +94,17 @@ public static class PoisonPatches
                     return;
 
                 // === 파워 소유자(몬스터) 찾기 ===
-                object? ownerCreature = null;
-
-                // PowerModel.Owner, Creature, Target 등 시도
-                var ownerProp = powerType.GetProperty("Owner")
-                    ?? powerType.GetProperty("Creature")
-                    ?? powerType.GetProperty("Target");
-
-                if (ownerProp != null)
-                {
-                    ownerCreature = ownerProp.GetValue(__1);
-                }
+                var ownerCreature = __1.Owner;
 
                 if (ownerCreature == null)
                 {
-                    // Owner를 못 찾으면 프로퍼티 목록 전체 로깅 (첫 1회만)
-                    ModEntry.LogDebug($"[DamageMeter] Poison PowerModel owner not found. Type: {powerType.FullName}");
-                    foreach (var prop in powerType.GetProperties())
-                    {
-                        try
-                        {
-                            var val = prop.GetValue(__1);
-                            ModEntry.LogDebug($"[DamageMeter]   PowerProp: {prop.Name} ({prop.PropertyType.Name}) = {val}");
-                        }
-                        catch { }
-                    }
+                    ModEntry.LogDebug($"[DamageMeter] Poison PowerModel owner is null. Type: {__1.GetType().FullName}");
                     return;
                 }
 
-                var creatureType = ownerCreature.GetType();
-                var isMonsterProp = creatureType.GetProperty("IsMonster");
-                bool isMonster = (bool)(isMonsterProp?.GetValue(ownerCreature) ?? false);
-                if (!isMonster) return;
+                if (!ownerCreature.IsMonster) return;
 
-                var monsterNameProp = creatureType.GetProperty("Name");
-                string monsterName = monsterNameProp?.GetValue(ownerCreature)?.ToString() ?? "Unknown";
+                string monsterName = ownerCreature.Name ?? "Unknown";
                 string monsterKey = $"{monsterName}_{ownerCreature.GetHashCode()}";
 
                 // === 이전 수치와 비교 ===
