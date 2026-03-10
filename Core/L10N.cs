@@ -3,9 +3,9 @@ using System.Collections.Generic;
 namespace DamageMeterMod.Core;
 
 /// <summary>
-/// 경량 다국어 지원.
-/// Godot.TranslationServer.GetLocale()로 게임 언어를 감지하여 자동 전환.
-/// 한국어(ko) 기본, 영어(en) 지원. 새 언어 추가: GetStrings()에 case 추가 + 딕셔너리 작성.
+/// Lightweight localization.
+/// Auto-detects game language via Godot.TranslationServer.GetLocale().
+/// English (en) default, Korean (ko) supported. To add a language: add case in GetStrings() + dictionary.
 /// </summary>
 public static class L10N
 {
@@ -28,7 +28,7 @@ public static class L10N
                 return locale[..2].ToLowerInvariant();
         }
         catch { }
-        return "ko";
+        return "en";
     }
 
     public static string Locale => CurrentLocale;
@@ -129,8 +129,8 @@ public static class L10N
 
     private static Dictionary<string, string> GetStrings(string locale) => locale switch
     {
-        "en" => EnglishStrings(),
-        _ => KoreanStrings(),
+        "ko" => KoreanStrings(),
+        _ => EnglishStrings(),
     };
 
     private static Dictionary<string, string> KoreanStrings() => new()
