@@ -75,6 +75,7 @@ public static class L10N
     public static string Unknown => Get("unknown");
     public static string Poison => Get("poison");
     public static string Death => Get("death");
+    public static string EffectLabel => Get("effect_label");
 
     // ===== 포맷 메서드 =====
 
@@ -183,6 +184,7 @@ public static class L10N
         ["unknown"] = "알 수 없음",
         ["poison"] = "독",
         ["death"] = "사망",
+        ["effect_label"] = "[효과]",
     };
 
     private static Dictionary<string, string> EnglishStrings() => new()
@@ -235,5 +237,6 @@ public static class L10N
         ["unknown"] = "Unknown",
         ["poison"] = "Poison",
         ["death"] = "Death",
+        ["effect_label"] = "[Effect]",
     };
 }
