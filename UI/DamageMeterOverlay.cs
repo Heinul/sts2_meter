@@ -94,6 +94,16 @@ public partial class DamageMeterOverlay : CanvasLayer
     private OptionButton _playerFilterOption = null!;
     private HBoxContainer _cardLogFilterBar = null!;
 
+    // 카드로그 가상 스크롤
+    private const float VIRTUAL_ROW_HEIGHT = 22f;
+    private const int VIRTUAL_BUFFER_ROWS = 3;
+    private List<List<CombatEvent>> _cachedGroups = new();
+    private Control _topSpacer = null!;
+    private Control _bottomSpacer = null!;
+    private int _virtualRangeStart = -1;
+    private int _virtualRangeEnd = -1;
+    private int _cachedGroupsHash;
+
     // 카드 호버 팁 (게임 내장 시스템)
     private Control? _activeHoverTipSet;
     private static Type? _hoverTipSetType;
@@ -296,16 +306,31 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         container.AddChild(_cardLogFilterBar);
 
-        // 스크롤 + 로그 행
+        // 스크롤 + 로그 행 (가상 스크롤)
         var scroll = new ScrollContainer();
         scroll.CustomMinimumSize = new Vector2(0, _currentHeight - 28);
         scroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
 
+        var outerBox = new VBoxContainer();
+        outerBox.AddThemeConstantOverride("separation", 0);
+        outerBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+
+        _topSpacer = new Control();
+        _topSpacer.CustomMinimumSize = new Vector2(0, 0);
+        outerBox.AddChild(_topSpacer);
+
         _cardLogRows = new VBoxContainer();
         _cardLogRows.AddThemeConstantOverride("separation", 1);
         _cardLogRows.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        scroll.AddChild(_cardLogRows);
+        outerBox.AddChild(_cardLogRows);
+
+        _bottomSpacer = new Control();
+        _bottomSpacer.CustomMinimumSize = new Vector2(0, 0);
+        outerBox.AddChild(_bottomSpacer);
+
+        scroll.AddChild(outerBox);
+        scroll.GetVScrollBar().ValueChanged += _ => RenderVisibleCardLogRows();
 
         _scrollContainers[0] = scroll;
         container.AddChild(scroll);
@@ -831,10 +856,8 @@ public partial class DamageMeterOverlay : CanvasLayer
     private void RefreshCardLogTab()
     {
         var allLog = DamageTracker.Instance.GetCombatLogSnapshot();
-        ClearChildren(_cardLogRows);
 
         // 카드 관련 이벤트 필터링
-        // DamageDealt, BlockGained 키 수집 (CardPlayed 중복 제거용)
         var handledCardKeys = new HashSet<string>();
         foreach (var evt in allLog)
         {
@@ -856,7 +879,6 @@ public partial class DamageMeterOverlay : CanvasLayer
                     cardEvents.Add(evt);
                     break;
                 case CombatEventType.CardPlayed:
-                    // DamageDealt나 BlockGained에서 이미 표시되는 카드는 건너뜀
                     var key = $"{evt.Turn}_{evt.PlayerId}_{evt.CardName}";
                     if (!handledCardKeys.Contains(key))
                         cardEvents.Add(evt);
@@ -864,7 +886,6 @@ public partial class DamageMeterOverlay : CanvasLayer
             }
         }
 
-        // 필터 드롭다운 갱신 (필터 적용 전 전체 이벤트 기준)
         UpdateCardLogFilterOptions(cardEvents);
 
         // 필터 적용
@@ -875,28 +896,89 @@ public partial class DamageMeterOverlay : CanvasLayer
             filtered = filtered.Where(e => e.PlayerId == _cardLogFilterPlayerId);
         var filteredList = filtered.ToList();
 
-        if (filteredList.Count == 0)
+        // 그룹핑 후 역순 (최신이 위)
+        var groups = GroupConsecutiveHits(filteredList);
+        groups.Reverse();
+
+        // 데이터 해시로 변경 여부 판단
+        int newHash = allLog.Count ^ filteredList.Count ^ _cardLogFilterTurn ^ _cardLogFilterPlayerId.GetHashCode();
+        bool dataChanged = newHash != _cachedGroupsHash;
+        _cachedGroupsHash = newHash;
+        _cachedGroups = groups;
+
+        if (dataChanged)
         {
-            var emptyText = cardEvents.Count > 0 ? L10N.EmptyFilterNoMatch : L10N.EmptyCardLog;
-            var emptyLabel = CreateLabel(emptyText, 11, SubTextColor);
-            emptyLabel.HorizontalAlignment = HorizontalAlignment.Center;
-            _cardLogRows.AddChild(emptyLabel);
+            // 데이터 변경 시 스크롤 범위 리셋
+            _virtualRangeStart = -1;
+            _virtualRangeEnd = -1;
+        }
+
+        RenderVisibleCardLogRows();
+    }
+
+    /// <summary>
+    /// 가상 스크롤: 현재 스크롤 위치에서 보이는 행만 렌더링.
+    /// </summary>
+    private void RenderVisibleCardLogRows()
+    {
+        if (_cachedGroups.Count == 0)
+        {
+            _topSpacer.CustomMinimumSize = new Vector2(0, 0);
+            _bottomSpacer.CustomMinimumSize = new Vector2(0, 0);
+            if (_cardLogRows.GetChildCount() == 0 ||
+                _cardLogRows.GetChild(0) is not Label)
+            {
+                ClearChildren(_cardLogRows);
+                var emptyLabel = CreateLabel(L10N.EmptyCardLog, 11, SubTextColor);
+                emptyLabel.HorizontalAlignment = HorizontalAlignment.Center;
+                _cardLogRows.AddChild(emptyLabel);
+            }
             return;
         }
 
-        var colorMap = DamageTracker.Instance.ColorMap;
+        var scroll = _scrollContainers[0];
+        if (scroll == null) return;
 
-        // 필터 결과 요약 (필터 활성 시)
-        if (_cardLogFilterTurn >= 0 || !string.IsNullOrEmpty(_cardLogFilterPlayerId))
+        float scrollY = (float)scroll.GetVScrollBar().Value;
+        float viewHeight = scroll.Size.Y;
+        int totalGroups = _cachedGroups.Count;
+        float totalHeight = totalGroups * VIRTUAL_ROW_HEIGHT;
+
+        // 보이는 범위 계산 (버퍼 포함)
+        int firstVisible = Math.Max(0, (int)(scrollY / VIRTUAL_ROW_HEIGHT) - VIRTUAL_BUFFER_ROWS);
+        int lastVisible = Math.Min(totalGroups - 1,
+            (int)((scrollY + viewHeight) / VIRTUAL_ROW_HEIGHT) + VIRTUAL_BUFFER_ROWS);
+
+        // 범위가 동일하면 재렌더링 불필요
+        if (firstVisible == _virtualRangeStart && lastVisible == _virtualRangeEnd)
+            return;
+
+        _virtualRangeStart = firstVisible;
+        _virtualRangeEnd = lastVisible;
+
+        // 스페이서 설정
+        _topSpacer.CustomMinimumSize = new Vector2(0, firstVisible * VIRTUAL_ROW_HEIGHT);
+        _bottomSpacer.CustomMinimumSize = new Vector2(0,
+            Math.Max(0, (totalGroups - lastVisible - 1) * VIRTUAL_ROW_HEIGHT));
+
+        // 보이는 행만 렌더링
+        ClearChildren(_cardLogRows);
+
+        // 필터 요약 (첫 행에만)
+        if (firstVisible == 0 &&
+            (_cardLogFilterTurn >= 0 || !string.IsNullOrEmpty(_cardLogFilterPlayerId)))
         {
             int totalDmg = 0, totalBlock = 0, count = 0;
-            foreach (var evt in filteredList)
+            foreach (var group in _cachedGroups)
             {
-                count++;
-                if (evt.EventType == CombatEventType.DamageDealt || evt.EventType == CombatEventType.PoisonDamage)
-                    totalDmg += evt.Damage;
-                else if (evt.EventType == CombatEventType.BlockGained)
-                    totalBlock += evt.Damage;
+                foreach (var evt in group)
+                {
+                    count++;
+                    if (evt.EventType == CombatEventType.DamageDealt || evt.EventType == CombatEventType.PoisonDamage)
+                        totalDmg += evt.Damage;
+                    else if (evt.EventType == CombatEventType.BlockGained)
+                        totalBlock += evt.Damage;
+                }
             }
             var summaryParts = new List<string> { L10N.CountItems(count) };
             if (totalDmg > 0) summaryParts.Add(L10N.DamageValue(totalDmg.ToString("N0")));
@@ -906,14 +988,10 @@ public partial class DamageMeterOverlay : CanvasLayer
             _cardLogRows.AddChild(summaryLabel);
         }
 
-        // 같은 턴+플레이어+카드+타입의 연속 DamageDealt를 그룹핑
-        var groups = GroupConsecutiveHits(filteredList);
-
-        // 최신 100그룹, 역순 (최신이 위)
-        int start = Math.Max(0, groups.Count - 100);
-        for (int i = groups.Count - 1; i >= start; i--)
+        var colorMap = DamageTracker.Instance.ColorMap;
+        for (int i = firstVisible; i <= lastVisible && i < totalGroups; i++)
         {
-            var group = groups[i];
+            var group = _cachedGroups[i];
             var color = colorMap.GetColor(group[0].PlayerId);
 
             if (group.Count > 1 && group[0].EventType == CombatEventType.DamageDealt)
