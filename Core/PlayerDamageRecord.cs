@@ -86,4 +86,18 @@ public struct PlayerDamageRecord
         TotalBlockedReceived = 0;
         DeathCount = 0;
     }
+
+    /// <summary>다른 레코드의 통계를 합산. 누적 데미지용.</summary>
+    public void MergeFrom(PlayerDamageRecord other)
+    {
+        TotalDamage += other.TotalDamage;
+        DirectDamage += other.DirectDamage;
+        PoisonDamage += other.PoisonDamage;
+        HitCount += other.HitCount;
+        MaxSingleHit = Math.Max(MaxSingleHit, other.MaxSingleHit);
+        // CurrentTurnDamage: 합산하지 않음 (턴 단위 일시 데이터)
+        TotalDamageReceived += other.TotalDamageReceived;
+        TotalBlockedReceived += other.TotalBlockedReceived;
+        DeathCount += other.DeathCount;
+    }
 }

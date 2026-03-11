@@ -126,6 +126,17 @@ public static class L10N
     public static string BlockedSuffix(int blocked) =>
         string.Format(Get("blocked_suffix_fmt"), blocked);
 
+    // 누적 모드
+    public static string ToggleCombat => Get("toggle_combat");
+    public static string ToggleRun => Get("toggle_run");
+    public static string ResetRun => Get("reset_run");
+
+    public static string FooterRun(int combats, string total) =>
+        string.Format(Get("footer_run_fmt"), combats, total);
+
+    public static string StatPerCombat(string value) =>
+        string.Format(Get("stat_per_combat_fmt"), value);
+
     // ===== 언어별 딕셔너리 =====
 
     private static Dictionary<string, string> GetStrings(string locale) => locale switch
@@ -185,6 +196,12 @@ public static class L10N
         ["poison"] = "독",
         ["death"] = "사망",
         ["effect_label"] = "[효과]",
+
+        ["toggle_combat"] = "이번 전투",
+        ["toggle_run"] = "누적",
+        ["footer_run_fmt"] = "전투 {0}회  |  총합: {1}",
+        ["reset_run"] = "리셋",
+        ["stat_per_combat_fmt"] = "전투당: {0}",
     };
 
     private static Dictionary<string, string> EnglishStrings() => new()
@@ -238,5 +255,11 @@ public static class L10N
         ["poison"] = "Poison",
         ["death"] = "Death",
         ["effect_label"] = "[Effect]",
+
+        ["toggle_combat"] = "This Combat",
+        ["toggle_run"] = "Cumulative",
+        ["footer_run_fmt"] = "{0} Combats  |  Total: {1}",
+        ["reset_run"] = "Reset",
+        ["stat_per_combat_fmt"] = "Per combat: {0}",
     };
 }

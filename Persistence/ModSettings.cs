@@ -24,6 +24,7 @@ public sealed class ModSettings
     public bool IsVisible { get; set; } = true;
     public bool IsMinimized { get; set; }
     public int ActiveTab { get; set; }
+    public bool ShowRunTotal { get; set; }
 
     // 플레이어 색상 매핑 (PlayerId → 색상 인덱스)
     public Dictionary<string, int> PlayerColors { get; set; } = new();

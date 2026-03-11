@@ -84,6 +84,12 @@ public partial class DamageMeterOverlay : CanvasLayer
     private Button _minBtn = null!;
     private HBoxContainer _resizeHandleRow = null!;
 
+    // 누적 모드
+    private bool _showRunTotal;
+    private Button _segCombatBtn = null!;
+    private Button _segRunBtn = null!;
+    private HBoxContainer _meterToggleBar = null!;
+
     // 카드로그 다중타격 펼침 상태
     private readonly HashSet<string> _expandedMultiHits = new();
 
@@ -243,6 +249,30 @@ public partial class DamageMeterOverlay : CanvasLayer
         colHeader.AddChild(pctCol);
 
         container.AddChild(colHeader);
+
+        // 세그먼트 토글 바: [이번 전투 | 누적]
+        _meterToggleBar = new HBoxContainer();
+        _meterToggleBar.AddThemeConstantOverride("separation", 0);
+        _meterToggleBar.CustomMinimumSize = new Vector2(0, 22);
+
+        _segCombatBtn = new Button();
+        _segCombatBtn.Text = L10N.ToggleCombat;
+        _segCombatBtn.AddThemeFontSizeOverride("font_size", 9);
+        _segCombatBtn.CustomMinimumSize = new Vector2(0, 20);
+        _segCombatBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _segCombatBtn.Pressed += () => { _showRunTotal = false; UpdateSegmentStyle(); _needsUpdate = true; };
+        _meterToggleBar.AddChild(_segCombatBtn);
+
+        _segRunBtn = new Button();
+        _segRunBtn.Text = L10N.ToggleRun;
+        _segRunBtn.AddThemeFontSizeOverride("font_size", 9);
+        _segRunBtn.CustomMinimumSize = new Vector2(0, 20);
+        _segRunBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _segRunBtn.Pressed += () => { _showRunTotal = true; UpdateSegmentStyle(); _needsUpdate = true; };
+        _meterToggleBar.AddChild(_segRunBtn);
+
+        container.AddChild(_meterToggleBar);
+        UpdateSegmentStyle();
 
         _meterRows = new VBoxContainer();
         _meterRows.AddThemeConstantOverride("separation", 2);
@@ -488,6 +518,9 @@ public partial class DamageMeterOverlay : CanvasLayer
             if (settings.ActiveTab >= 0 && settings.ActiveTab < TabNames.Length)
                 SwitchTab(settings.ActiveTab);
 
+            _showRunTotal = settings.ShowRunTotal;
+            UpdateSegmentStyle();
+
             if (settings.PlayerColors.Count > 0)
                 DamageTracker.Instance.ColorMap.Import(settings.PlayerColors);
         }
@@ -508,6 +541,7 @@ public partial class DamageMeterOverlay : CanvasLayer
             settings.PanelHeight = _currentHeight;
             settings.IsVisible = _isVisible;
             settings.ActiveTab = _activeTab;
+            settings.ShowRunTotal = _showRunTotal;
             settings.PlayerColors = DamageTracker.Instance.ColorMap.Export();
             settings.Save();
         }
@@ -693,6 +727,44 @@ public partial class DamageMeterOverlay : CanvasLayer
         btn.AddThemeColorOverride("font_color", active ? TextColor : SubTextColor);
     }
 
+    private void UpdateSegmentStyle()
+    {
+        var activeStyle = new StyleBoxFlat
+        {
+            BgColor = TabActiveBg,
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 0,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 0,
+        };
+        var inactiveStyleLeft = new StyleBoxFlat
+        {
+            BgColor = TabInactiveBg,
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 0,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 0,
+        };
+        var activeStyleRight = new StyleBoxFlat
+        {
+            BgColor = TabActiveBg,
+            CornerRadiusTopLeft = 0, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 0, CornerRadiusBottomRight = 3,
+        };
+        var inactiveStyleRight = new StyleBoxFlat
+        {
+            BgColor = TabInactiveBg,
+            CornerRadiusTopLeft = 0, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 0, CornerRadiusBottomRight = 3,
+        };
+
+        var combatStyle = _showRunTotal ? inactiveStyleLeft : activeStyle;
+        _segCombatBtn.AddThemeStyleboxOverride("normal", combatStyle);
+        _segCombatBtn.AddThemeStyleboxOverride("hover", combatStyle);
+        _segCombatBtn.AddThemeColorOverride("font_color", _showRunTotal ? SubTextColor : TextColor);
+
+        var runStyle = _showRunTotal ? activeStyleRight : inactiveStyleRight;
+        _segRunBtn.AddThemeStyleboxOverride("normal", runStyle);
+        _segRunBtn.AddThemeStyleboxOverride("hover", runStyle);
+        _segRunBtn.AddThemeColorOverride("font_color", _showRunTotal ? TextColor : SubTextColor);
+    }
+
     // ===== 최소화 시 타이틀 갱신 =====
     private void RefreshMinimizedTitle()
     {
@@ -758,23 +830,45 @@ public partial class DamageMeterOverlay : CanvasLayer
         }
 
         // 푸터 업데이트
-        int turn = DamageTracker.Instance.CombatTurn;
-        var snapshot = DamageTracker.Instance.GetSnapshot();
-        int grandTotal = 0;
-        foreach (var s in snapshot) grandTotal += s.TotalDamage;
-
-        _footerLabel.Text = L10N.Footer(turn, grandTotal.ToString("N0"));
-
-        if (!DamageTracker.Instance.IsActive && grandTotal > 0)
-            _titleLabel.Text = L10N.TitleDone;
+        if (_activeTab == 0 && _showRunTotal)
+        {
+            var runSnapshot = DamageTracker.Instance.GetRunSnapshot();
+            int runGrandTotal = 0;
+            foreach (var s in runSnapshot) runGrandTotal += s.TotalDamage;
+            int combats = DamageTracker.Instance.RunCombatCount;
+            _footerLabel.Text = L10N.FooterRun(combats, runGrandTotal.ToString("N0"));
+        }
         else
+        {
+            int turn = DamageTracker.Instance.CombatTurn;
+            var snapshot = DamageTracker.Instance.GetSnapshot();
+            int grandTotal = 0;
+            foreach (var s in snapshot) grandTotal += s.TotalDamage;
+            _footerLabel.Text = L10N.Footer(turn, grandTotal.ToString("N0"));
+        }
+
+        if (!DamageTracker.Instance.IsActive)
+        {
+            var currentSnapshot = DamageTracker.Instance.GetSnapshot();
+            int currentTotal = 0;
+            foreach (var s in currentSnapshot) currentTotal += s.TotalDamage;
+            if (currentTotal > 0)
+                _titleLabel.Text = L10N.TitleDone;
+            else
+                _titleLabel.Text = L10N.Title;
+        }
+        else
+        {
             _titleLabel.Text = L10N.Title;
+        }
     }
 
     // ----- 탭 0: 미터 -----
     private void RefreshMeterTab()
     {
-        var snapshot = DamageTracker.Instance.GetSnapshot();
+        var snapshot = _showRunTotal
+            ? DamageTracker.Instance.GetRunSnapshot()
+            : DamageTracker.Instance.GetSnapshot();
         ClearChildren(_meterRows);
 
         if (snapshot.Count == 0)
@@ -834,14 +928,28 @@ public partial class DamageMeterOverlay : CanvasLayer
 
         // 상세 통계
         var parts = new List<string>();
-        if (entry.CurrentTurnDamage > 0)
-            parts.Add(L10N.StatThisTurn(entry.CurrentTurnDamage.ToString("N0")));
-        if (entry.DamagePerTurn > 0)
-            parts.Add(L10N.StatPerTurn(entry.DamagePerTurn.ToString("F1")));
-        if (entry.MaxSingleHit > 0)
-            parts.Add(L10N.StatMax(entry.MaxSingleHit.ToString("N0")));
-        if (entry.PoisonDamage > 0)
-            parts.Add(L10N.StatPoison(entry.PoisonDamage.ToString("N0")));
+        if (_showRunTotal)
+        {
+            // 누적 모드: 전투당 데미지 + 최대 단일 타격
+            if (entry.DamagePerTurn > 0)
+                parts.Add(L10N.StatPerCombat(entry.DamagePerTurn.ToString("F0")));
+            if (entry.MaxSingleHit > 0)
+                parts.Add(L10N.StatMax(entry.MaxSingleHit.ToString("N0")));
+            if (entry.PoisonDamage > 0)
+                parts.Add(L10N.StatPoison(entry.PoisonDamage.ToString("N0")));
+        }
+        else
+        {
+            // 이번 전투 모드: 이번턴 + 턴당 + 최대 + 독
+            if (entry.CurrentTurnDamage > 0)
+                parts.Add(L10N.StatThisTurn(entry.CurrentTurnDamage.ToString("N0")));
+            if (entry.DamagePerTurn > 0)
+                parts.Add(L10N.StatPerTurn(entry.DamagePerTurn.ToString("F1")));
+            if (entry.MaxSingleHit > 0)
+                parts.Add(L10N.StatMax(entry.MaxSingleHit.ToString("N0")));
+            if (entry.PoisonDamage > 0)
+                parts.Add(L10N.StatPoison(entry.PoisonDamage.ToString("N0")));
+        }
 
         if (parts.Count > 0)
         {

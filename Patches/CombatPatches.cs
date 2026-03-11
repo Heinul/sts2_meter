@@ -294,12 +294,15 @@ public static class CombatPatches
         }
 
         [HarmonyPostfix]
-        public static void Postfix(CombatState __1)
+        public static void Postfix(object __0, CombatState __1)
         {
             try
             {
                 var combatState = __1;
                 if (combatState == null) return;
+
+                // 런 변경 감지 (IRunState 참조 비교)
+                DamageTracker.Instance.CheckRunChange(__0);
 
                 var playerList = new List<(string id, string name)>();
 

@@ -37,6 +37,11 @@ public sealed class DamageTracker
     // CardModel 참조 캐시: cardName → CardModel object (hover tip용)
     private readonly Dictionary<string, object> _cardModelCache = new();
 
+    // 런 전체 누적 기록
+    private readonly Dictionary<string, PlayerDamageRecord> _runRecords = new();
+    private int _runCombatCount;
+    private object? _currentRunStateRef;
+
     // 플레이어 색상 매핑
     public PlayerColorMap ColorMap { get; } = new();
 
@@ -72,11 +77,31 @@ public sealed class DamageTracker
     /// <summary>전투 로그가 추가되었을 때 발생하는 콜백.</summary>
     public event Action? OnCombatLogChanged;
 
-    /// <summary>전투 시작 시 호출. 모든 데이터를 초기화.</summary>
+    /// <summary>전투 시작 시 호출. 이전 전투 데이터를 누적에 합산 후 초기화.</summary>
     public void StartCombat(IEnumerable<(string id, string name)> players)
     {
         lock (_dataLock)
         {
+            // 이전 전투 데이터를 누적에 합산
+            if (_records.Count > 0)
+            {
+                foreach (var kvp in _records)
+                {
+                    if (_runRecords.TryGetValue(kvp.Key, out var existing))
+                    {
+                        existing.MergeFrom(kvp.Value);
+                        _runRecords[kvp.Key] = existing; // struct 재할당
+                    }
+                    else
+                    {
+                        var newRecord = new PlayerDamageRecord(kvp.Key, kvp.Value.DisplayName);
+                        newRecord.MergeFrom(kvp.Value);
+                        _runRecords[kvp.Key] = newRecord;
+                    }
+                }
+            }
+
+            // 기존 동작: 현재 전투 데이터 초기화
             _records.Clear();
             _combatLog.Clear();
             _poisonAttribution.Clear();
@@ -96,6 +121,10 @@ public sealed class DamageTracker
     /// <summary>전투 종료 시 호출. 마지막 데이터는 유지 (결과 화면용).</summary>
     public void EndCombat()
     {
+        lock (_dataLock)
+        {
+            _runCombatCount++; // 완료된 전투만 카운트
+        }
         IsActive = false;
         OnDataChanged?.Invoke();
     }
@@ -404,6 +433,95 @@ public sealed class DamageTracker
         }
     }
 
+    /// <summary>IRunState 참조 비교로 새 런 감지. 새 런이면 누적 초기화.</summary>
+    public void CheckRunChange(object? runState)
+    {
+        lock (_dataLock)
+        {
+            if (_currentRunStateRef != null
+                && runState != null
+                && !ReferenceEquals(_currentRunStateRef, runState))
+            {
+                // 새 런 시작 → 누적 데이터 초기화
+                _runRecords.Clear();
+                _runCombatCount = 0;
+            }
+            _currentRunStateRef = runState;
+        }
+    }
+
+    /// <summary>수동 리셋 버튼용. 누적 데이터 초기화.</summary>
+    public void ResetRunData()
+    {
+        lock (_dataLock)
+        {
+            _runRecords.Clear();
+            _runCombatCount = 0;
+        }
+        OnDataChanged?.Invoke();
+    }
+
+    /// <summary>누적 + 현재 전투 합산 스냅샷 반환.</summary>
+    public IReadOnlyList<PlayerDamageSnapshot> GetRunSnapshot()
+    {
+        lock (_dataLock)
+        {
+            // _runRecords + _records 합산
+            var merged = new Dictionary<string, PlayerDamageRecord>();
+
+            foreach (var kvp in _runRecords)
+            {
+                merged[kvp.Key] = kvp.Value;
+            }
+
+            foreach (var kvp in _records)
+            {
+                if (merged.TryGetValue(kvp.Key, out var existing))
+                {
+                    existing.MergeFrom(kvp.Value);
+                    merged[kvp.Key] = existing;
+                }
+                else
+                {
+                    merged[kvp.Key] = kvp.Value;
+                }
+            }
+
+            int grandTotal = merged.Values.Sum(r => r.TotalDamage);
+            // 완료된 전투 + 진행 중 전투
+            int totalCombats = _runCombatCount + (IsActive ? 1 : 0);
+
+            return merged.Values
+                .OrderByDescending(r => r.TotalDamage)
+                .Select(r => new PlayerDamageSnapshot
+                {
+                    PlayerId = r.PlayerId,
+                    DisplayName = r.DisplayName,
+                    TotalDamage = r.TotalDamage,
+                    DirectDamage = r.DirectDamage,
+                    PoisonDamage = r.PoisonDamage,
+                    Percentage = grandTotal > 0
+                        ? (float)r.TotalDamage / grandTotal * 100f : 0f,
+                    HitCount = r.HitCount,
+                    MaxSingleHit = r.MaxSingleHit,
+                    CurrentTurnDamage = 0, // 누적 모드에서는 의미 없음
+                    DamagePerTurn = totalCombats > 0
+                        ? (float)r.TotalDamage / totalCombats : 0f,
+                        // 누적 모드: "턴당" 대신 "전투당" 데미지
+                    TotalDamageReceived = r.TotalDamageReceived,
+                    TotalBlockedReceived = r.TotalBlockedReceived,
+                    DeathCount = r.DeathCount
+                })
+                .ToList();
+        }
+    }
+
+    /// <summary>현재 런의 전투 횟수. 진행 중 전투 포함.</summary>
+    public int RunCombatCount
+    {
+        get { lock (_dataLock) { return _runCombatCount + (IsActive ? 1 : 0); } }
+    }
+
     /// <summary>전체 초기화 (모드 언로드 시).</summary>
     public void Dispose()
     {
@@ -412,6 +530,9 @@ public sealed class DamageTracker
             _records.Clear();
             _combatLog.Clear();
             _poisonAttribution.Clear();
+            _runRecords.Clear();
+            _runCombatCount = 0;
+            _currentRunStateRef = null;
             IsActive = false;
         }
         OnDataChanged = null;

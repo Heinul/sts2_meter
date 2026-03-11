@@ -17,7 +17,14 @@ preview/
 # OS
 Thumbs.db
 .DS_Store
+desktop.ini
 
 # Python cache
 __pycache__/
 *.pyc
+
+# Build artifacts
+*.pck
+
+docs/
+*.md
