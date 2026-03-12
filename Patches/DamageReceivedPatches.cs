@@ -135,19 +135,28 @@ public static class DamageReceivedPatches
             try
             {
                 var creature = __2;
-                if (creature == null || !creature.IsPlayer) return;
+                if (creature == null) return;
 
-                var player = creature.Player;
-                if (player == null) return;
+                if (creature.IsPlayer)
+                {
+                    // 플레이어 사망
+                    var player = creature.Player;
+                    if (player == null) return;
 
-                string playerId = player.NetId.ToString();
-                string playerName = creature.Name ?? L10N.Unknown;
+                    string playerId = player.NetId.ToString();
+                    string playerName = creature.Name ?? L10N.Unknown;
 
-                DamageTracker.Instance.RecordDamageReceived(
-                    playerId, playerName, L10N.Death,
-                    0, 0, 0, wasKilled: true);
+                    DamageTracker.Instance.RecordDamageReceived(
+                        playerId, playerName, L10N.Death,
+                        0, 0, 0, wasKilled: true);
 
-                ModEntry.Log($"[DamageMeter] {playerName} 사망!");
+                    ModEntry.Log($"[DamageMeter] {playerName} 사망!");
+                }
+                else if (creature.IsMonster)
+                {
+                    // 몬스터 사망 → 남은 독 스택이 있으면 마지막 틱 기록
+                    PoisonPatches.HandleMonsterDeath(creature);
+                }
             }
             catch (Exception ex)
             {

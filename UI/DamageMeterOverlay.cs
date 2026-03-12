@@ -90,6 +90,16 @@ public partial class DamageMeterOverlay : CanvasLayer
     private Button _segRunBtn = null!;
     private HBoxContainer _meterToggleBar = null!;
 
+#if DEBUG
+    // 디버그 패널
+    private PanelContainer? _debugPanel;
+    private Label? _debugStatsLabel;
+    private Label? _debugLogLabel;
+    private bool _debugPanelVisible;
+    private double _debugUpdateTimer;
+    private const double DEBUG_UPDATE_INTERVAL = 0.3;
+#endif
+
     // 카드로그 다중타격 펼침 상태
     private readonly HashSet<string> _expandedMultiHits = new();
 
@@ -156,6 +166,10 @@ public partial class DamageMeterOverlay : CanvasLayer
         BuildResizeHandle();
 
         AddChild(_panel);
+
+#if DEBUG
+        BuildDebugPanel();
+#endif
     }
 
     // ===== 헤더 =====
@@ -565,6 +579,10 @@ public partial class DamageMeterOverlay : CanvasLayer
     // ===== 프레임 업데이트 =====
     public override void _Process(double delta)
     {
+#if DEBUG
+        UpdateDebugPanel(delta);
+#endif
+
         if (!_isVisible) return;
 
         _updateTimer += delta;
@@ -603,12 +621,14 @@ public partial class DamageMeterOverlay : CanvasLayer
                 GetViewport().SetInputAsHandled();
                 return;
             }
+#if DEBUG
             if (keyEvent.Keycode == Key.F8)
             {
-                ModEntry.SetDebugMode(!ModEntry.DebugMode);
+                ToggleDebugPanel();
                 GetViewport().SetInputAsHandled();
                 return;
             }
+#endif
         }
 
         if (!_isVisible) return;
@@ -1706,4 +1726,133 @@ public partial class DamageMeterOverlay : CanvasLayer
         catch { }
         _activeHoverTipSet = null;
     }
+
+#if DEBUG
+    // ===== 독 디버그 패널 (DEBUG 빌드 전용) =====
+    private void BuildDebugPanel()
+    {
+        _debugPanel = new PanelContainer();
+        _debugPanel.Visible = false;
+
+        var style = new StyleBoxFlat
+        {
+            BgColor = new Color(0.0f, 0.05f, 0.0f, 0.9f),
+            BorderColor = new Color(0.3f, 0.9f, 0.3f, 0.8f),
+            BorderWidthTop = 1, BorderWidthBottom = 1,
+            BorderWidthLeft = 1, BorderWidthRight = 1,
+            CornerRadiusTopLeft = 4, CornerRadiusTopRight = 4,
+            CornerRadiusBottomLeft = 4, CornerRadiusBottomRight = 4,
+            ContentMarginLeft = 8, ContentMarginRight = 8,
+            ContentMarginTop = 6, ContentMarginBottom = 6
+        };
+        _debugPanel.AddThemeStyleboxOverride("panel", style);
+
+        var vbox = new VBoxContainer();
+        vbox.AddThemeConstantOverride("separation", 4);
+        _debugPanel.AddChild(vbox);
+
+        // 헤더
+        var header = new Label();
+        header.Text = "[F8] Poison Debug (DEBUG BUILD)";
+        header.AddThemeFontSizeOverride("font_size", 13);
+        header.AddThemeColorOverride("font_color", new Color(0.3f, 1.0f, 0.3f));
+        vbox.AddChild(header);
+
+        var sep = new HSeparator();
+        sep.AddThemeStyleboxOverride("separator", new StyleBoxFlat { BgColor = new Color(0.3f, 0.7f, 0.3f, 0.5f) });
+        sep.CustomMinimumSize = new Vector2(0, 1);
+        vbox.AddChild(sep);
+
+        // 통계 라벨
+        _debugStatsLabel = new Label();
+        _debugStatsLabel.AddThemeFontSizeOverride("font_size", 12);
+        _debugStatsLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.95f, 0.8f));
+        vbox.AddChild(_debugStatsLabel);
+
+        var sep2 = new HSeparator();
+        sep2.AddThemeStyleboxOverride("separator", new StyleBoxFlat { BgColor = new Color(0.3f, 0.7f, 0.3f, 0.3f) });
+        sep2.CustomMinimumSize = new Vector2(0, 1);
+        vbox.AddChild(sep2);
+
+        // 로그 스크롤
+        var scroll = new ScrollContainer();
+        scroll.CustomMinimumSize = new Vector2(420, 250);
+        scroll.VerticalScrollMode = ScrollContainer.ScrollMode.Auto;
+        vbox.AddChild(scroll);
+
+        _debugLogLabel = new Label();
+        _debugLogLabel.AddThemeFontSizeOverride("font_size", 11);
+        _debugLogLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.85f, 0.7f));
+        _debugLogLabel.AutowrapMode = TextServer.AutowrapMode.Off;
+        scroll.AddChild(_debugLogLabel);
+
+        // 로그 파일 경로
+        var pathLabel = new Label();
+        pathLabel.AddThemeFontSizeOverride("font_size", 10);
+        pathLabel.AddThemeColorOverride("font_color", new Color(0.5f, 0.6f, 0.5f));
+        pathLabel.Text = $"Log: {Core.PoisonDebugLogger.GetLogPath() ?? "(전투 시작 후 생성)"}";
+        vbox.AddChild(pathLabel);
+
+        // 화면 우측 상단에 배치
+        _debugPanel.Position = new Vector2(20, 20);
+        AddChild(_debugPanel);
+    }
+
+    private void ToggleDebugPanel()
+    {
+        if (_debugPanel == null) return;
+        _debugPanelVisible = !_debugPanelVisible;
+        _debugPanel.Visible = _debugPanelVisible;
+        if (_debugPanelVisible)
+            RefreshDebugPanel();
+    }
+
+    private void UpdateDebugPanel(double delta)
+    {
+        if (!_debugPanelVisible || _debugPanel == null) return;
+
+        _debugUpdateTimer += delta;
+        if (_debugUpdateTimer >= DEBUG_UPDATE_INTERVAL)
+        {
+            _debugUpdateTimer = 0;
+            RefreshDebugPanel();
+        }
+    }
+
+    private void RefreshDebugPanel()
+    {
+        if (_debugStatsLabel == null || _debugLogLabel == null) return;
+
+        bool active = Core.PoisonDebugLogger.IsActive;
+        var status = active ? "ON" : "대기 (전투 시작 시 활성화)";
+
+        _debugStatsLabel.Text =
+            $"상태: {status}\n" +
+            $"훅 호출: {Core.PoisonDebugLogger.HookCallCount}  " +
+            $"독 매칭: {Core.PoisonDebugLogger.PoisonMatchCount}  " +
+            $"독 적용: {Core.PoisonDebugLogger.PoisonApplyCount}  " +
+            $"독 틱: {Core.PoisonDebugLogger.PoisonTickCount}  " +
+            $"(총 이벤트: {Core.PoisonDebugLogger.EventCount})";
+
+        var lines = Core.PoisonDebugLogger.GetDisplayLines();
+        if (lines.Count == 0)
+        {
+            _debugLogLabel.Text = active
+                ? "(이벤트 대기 중 — 파워 변경이 발생하면 여기에 표시됩니다)"
+                : "(전투를 시작하면 로깅이 시작됩니다)";
+        }
+        else
+        {
+            _debugLogLabel.Text = string.Join("\n", lines);
+        }
+
+        // 로그 파일 경로 업데이트
+        var pathLabel = _debugPanel?.GetChild(0)?.GetChild((_debugPanel.GetChild(0) as VBoxContainer)!.GetChildCount() - 1) as Label;
+        if (pathLabel != null)
+        {
+            var logPath = Core.PoisonDebugLogger.GetLogPath();
+            pathLabel.Text = logPath != null ? $"Log: {logPath}" : "Log: (전투 시작 후 생성)";
+        }
+    }
+#endif
 }

@@ -105,6 +105,9 @@ public static class L10N
     public static string EffectPrefix(string value) =>
         string.Format(Get("effect_prefix_fmt"), value);
 
+    public static string RelicPrefix(string title) =>
+        string.Format(Get("relic_prefix_fmt"), title);
+
     public static string PoisonTarget(string target) =>
         string.Format(Get("poison_target_fmt"), target);
 
@@ -187,6 +190,7 @@ public static class L10N
         ["block_value_fmt"] = "블록:{0}",
 
         ["power_prefix_fmt"] = "[파워] {0}",
+        ["relic_prefix_fmt"] = "[유물] {0}",
         ["effect_prefix_fmt"] = "[효과] {0}",
         ["poison_target_fmt"] = "독 → {0}",
 
@@ -246,6 +250,7 @@ public static class L10N
         ["block_value_fmt"] = "Block:{0}",
 
         ["power_prefix_fmt"] = "[Power] {0}",
+        ["relic_prefix_fmt"] = "[Relic] {0}",
         ["effect_prefix_fmt"] = "[Effect] {0}",
         ["poison_target_fmt"] = "Poison → {0}",
 
