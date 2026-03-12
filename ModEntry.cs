@@ -21,14 +21,16 @@ namespace DamageMeterMod;
 public class ModEntry
 {
     private const string HARMONY_ID = "com.damagemeter.sts2";
+    public const string MOD_VERSION = "1.2.0";
+
     private static Harmony? _harmony;
     private static DamageMeterOverlay? _overlay;
-    private static bool _debugMode = true;
+    private static bool _debugMode = false;
 
     /// <summary>게임이 모드 로드 시 호출하는 static 진입점.</summary>
     public static void Initialize()
     {
-        Log("[DamageMeter] Initializing Damage Meter Mod v1.0.0...");
+        Log($"[DamageMeter] Initializing Damage Meter Mod v{MOD_VERSION}...");
 
         try
         {
@@ -44,6 +46,9 @@ public class ModEntry
             Log("[DamageMeter] UI overlay added to scene tree.");
 
             Log("[DamageMeter] Mod initialized successfully. Press F7 to toggle.");
+
+            // 비동기 업데이트 확인 (fire-and-forget, 초기화 차단 안 함)
+            _ = Core.UpdateChecker.CheckForUpdateAsync();
         }
         catch (Exception ex)
         {

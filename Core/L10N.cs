@@ -111,6 +111,16 @@ public static class L10N
     public static string PoisonTarget(string target) =>
         string.Format(Get("poison_target_fmt"), target);
 
+    // ===== 모드 정보 (게임 모드 화면) =====
+    public static string ModName => Get("mod_name");
+    public static string ModDescription => Get("mod_description");
+
+    // ===== 업데이트 알림 =====
+    public static string UpdateAvailable(string version) =>
+        string.Format(Get("update_available_fmt"), version);
+    public static string UpdateOpenPage => Get("update_open_page");
+    public static string UpdateDismiss => Get("update_dismiss");
+
     public static string StatThisTurn(string value) =>
         string.Format(Get("stat_this_turn_fmt"), value);
 
@@ -206,6 +216,13 @@ public static class L10N
         ["footer_run_fmt"] = "전투 {0}회  |  총합: {1}",
         ["reset_run"] = "리셋",
         ["stat_per_combat_fmt"] = "전투당: {0}",
+
+        ["mod_name"] = "데미지 미터",
+        ["mod_description"] = "전투 중 플레이어별 딜량, 받은피해, 방어도, 카드 사용을 추적합니다. 미터/카드로그/받은피해 3개 탭. 솔로 및 협동 지원. F7로 토글.",
+
+        ["update_available_fmt"] = "새 버전 {0} 출시!",
+        ["update_open_page"] = "다운로드",
+        ["update_dismiss"] = "닫기",
     };
 
     private static Dictionary<string, string> EnglishStrings() => new()
@@ -266,5 +283,12 @@ public static class L10N
         ["footer_run_fmt"] = "{0} Combats  |  Total: {1}",
         ["reset_run"] = "Reset",
         ["stat_per_combat_fmt"] = "Per combat: {0}",
+
+        ["mod_name"] = "Damage Meter",
+        ["mod_description"] = "Tracks per-player damage dealt, received, block, and card usage during combat. 3 tabs: Meter, Card Log, Received Damage. Solo & co-op. F7 to toggle.",
+
+        ["update_available_fmt"] = "Update {0} available!",
+        ["update_open_page"] = "Download",
+        ["update_dismiss"] = "Dismiss",
     };
 }

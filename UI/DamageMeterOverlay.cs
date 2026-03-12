@@ -90,6 +90,9 @@ public partial class DamageMeterOverlay : CanvasLayer
     private Button _segRunBtn = null!;
     private HBoxContainer _meterToggleBar = null!;
 
+    // 업데이트 알림 배너
+    private PanelContainer? _updateBanner;
+
 #if DEBUG
     // 디버그 패널
     private PanelContainer? _debugPanel;
@@ -135,6 +138,15 @@ public partial class DamageMeterOverlay : CanvasLayer
         BuildUI();
         SubscribeToEvents();
         LoadSettings();
+
+        // 업데이트 알림 이벤트 구독
+        UpdateChecker.OnUpdateCheckCompleted += OnUpdateCheckCompleted;
+    }
+
+    private void OnUpdateCheckCompleted()
+    {
+        // 이벤트가 비동기 스레드에서 올 수 있으므로 다음 _Process()에서 처리
+        CallDeferred(nameof(ShowUpdateBanner));
     }
 
     private void BuildUI()
@@ -612,7 +624,7 @@ public partial class DamageMeterOverlay : CanvasLayer
     // ===== 입력 처리 =====
     public override void _Input(InputEvent @event)
     {
-        // F7/F8: 항상 처리 (패널 숨김 상태에서도)
+        // F7: 항상 처리 (패널 숨김 상태에서도)
         if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
         {
             if (keyEvent.Keycode == Key.F7)
@@ -1855,4 +1867,105 @@ public partial class DamageMeterOverlay : CanvasLayer
         }
     }
 #endif
+
+    // ---------------------------------------------------------------
+    // 업데이트 알림 배너
+    // ---------------------------------------------------------------
+
+    private void ShowUpdateBanner()
+    {
+        if (!UpdateChecker.IsUpdateAvailable) return;
+        if (_updateBanner != null) return; // 이미 표시 중
+
+        var latestVer = UpdateChecker.LatestVersion;
+        if (string.IsNullOrEmpty(latestVer)) return;
+
+        // 이전에 닫은 버전이면 표시하지 않음
+        var settings = ModSettings.Current;
+        if (settings.DismissedUpdateVersion == latestVer) return;
+
+        // 배너 패널 (오렌지/골드 강조)
+        var bannerStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.15f, 0.12f, 0.05f, 0.95f),
+            BorderWidthBottom = 2,
+            BorderWidthTop = 2,
+            BorderWidthLeft = 2,
+            BorderWidthRight = 2,
+            BorderColor = new Color(0.9f, 0.7f, 0.2f, 0.9f),
+            CornerRadiusTopLeft = 4, CornerRadiusTopRight = 4,
+            CornerRadiusBottomLeft = 4, CornerRadiusBottomRight = 4,
+            ContentMarginLeft = 8, ContentMarginRight = 8,
+            ContentMarginTop = 4, ContentMarginBottom = 4,
+        };
+
+        _updateBanner = new PanelContainer();
+        _updateBanner.AddThemeStyleboxOverride("panel", bannerStyle);
+
+        var hbox = new HBoxContainer();
+        hbox.AddThemeConstantOverride("separation", 8);
+
+        // "새 버전 v1.3.0 출시!" 라벨
+        var msgLabel = CreateLabel(
+            L10N.UpdateAvailable($"v{latestVer}"),
+            13, new Color(1.0f, 0.85f, 0.3f));
+        msgLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        hbox.AddChild(msgLabel);
+
+        // [다운로드] 버튼
+        var downloadBtn = new Button();
+        downloadBtn.Text = L10N.UpdateOpenPage;
+        downloadBtn.AddThemeFontSizeOverride("font_size", 12);
+        var dlStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.2f, 0.5f, 0.2f, 0.9f),
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+        };
+        var dlHover = new StyleBoxFlat
+        {
+            BgColor = new Color(0.25f, 0.6f, 0.25f, 0.9f),
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+        };
+        downloadBtn.AddThemeStyleboxOverride("normal", dlStyle);
+        downloadBtn.AddThemeStyleboxOverride("hover", dlHover);
+        downloadBtn.Pressed += () => UpdateChecker.OpenReleasePage();
+        hbox.AddChild(downloadBtn);
+
+        // [닫기] 버튼
+        var dismissBtn = new Button();
+        dismissBtn.Text = L10N.UpdateDismiss;
+        ApplyButtonStyle(dismissBtn);
+        dismissBtn.AddThemeFontSizeOverride("font_size", 12);
+        dismissBtn.Pressed += DismissUpdateBanner;
+        hbox.AddChild(dismissBtn);
+
+        _updateBanner.AddChild(hbox);
+
+        // _rootContainer 최상단에 삽입 (타이틀 바 다음)
+        _rootContainer.AddChild(_updateBanner);
+        _rootContainer.MoveChild(_updateBanner, 1); // index 0 = 헤더, 1 = 배너
+
+        ModEntry.Log($"[DamageMeter] Update banner shown: v{latestVer}");
+    }
+
+    private void DismissUpdateBanner()
+    {
+        if (_updateBanner == null) return;
+
+        var latestVer = UpdateChecker.LatestVersion;
+        _updateBanner.QueueFree();
+        _updateBanner = null;
+
+        // dismiss 상태 저장
+        if (!string.IsNullOrEmpty(latestVer))
+        {
+            var settings = ModSettings.Current;
+            settings.DismissedUpdateVersion = latestVer;
+            settings.Save();
+        }
+
+        ModEntry.Log($"[DamageMeter] Update banner dismissed for v{latestVer}");
+    }
 }

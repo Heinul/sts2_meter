@@ -26,6 +26,9 @@ public sealed class ModSettings
     public int ActiveTab { get; set; }
     public bool ShowRunTotal { get; set; }
 
+    // 업데이트 알림 dismiss 상태
+    public string DismissedUpdateVersion { get; set; } = "";
+
     // 플레이어 색상 매핑 (PlayerId → 색상 인덱스)
     public Dictionary<string, int> PlayerColors { get; set; } = new();
 
