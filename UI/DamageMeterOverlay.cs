@@ -1912,26 +1912,47 @@ public partial class DamageMeterOverlay : CanvasLayer
         msgLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         hbox.AddChild(msgLabel);
 
-        // [다운로드] 버튼
-        var downloadBtn = new Button();
-        downloadBtn.Text = L10N.UpdateOpenPage;
-        downloadBtn.AddThemeFontSizeOverride("font_size", 12);
-        var dlStyle = new StyleBoxFlat
+        // [NexusMods] 버튼 (주요 배포처, 오렌지 계열)
+        var nexusBtn = new Button();
+        nexusBtn.Text = L10N.UpdateNexusMods;
+        nexusBtn.AddThemeFontSizeOverride("font_size", 12);
+        var nexusStyle = new StyleBoxFlat
         {
-            BgColor = new Color(0.2f, 0.5f, 0.2f, 0.9f),
+            BgColor = new Color(0.55f, 0.35f, 0.1f, 0.9f),
             CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
             CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
         };
-        var dlHover = new StyleBoxFlat
+        var nexusHover = new StyleBoxFlat
         {
-            BgColor = new Color(0.25f, 0.6f, 0.25f, 0.9f),
+            BgColor = new Color(0.65f, 0.45f, 0.15f, 0.9f),
             CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
             CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
         };
-        downloadBtn.AddThemeStyleboxOverride("normal", dlStyle);
-        downloadBtn.AddThemeStyleboxOverride("hover", dlHover);
-        downloadBtn.Pressed += () => UpdateChecker.OpenReleasePage();
-        hbox.AddChild(downloadBtn);
+        nexusBtn.AddThemeStyleboxOverride("normal", nexusStyle);
+        nexusBtn.AddThemeStyleboxOverride("hover", nexusHover);
+        nexusBtn.Pressed += () => UpdateChecker.OpenNexusMods();
+        hbox.AddChild(nexusBtn);
+
+        // [GitHub] 버튼 (보조, 어두운 계열)
+        var ghBtn = new Button();
+        ghBtn.Text = L10N.UpdateGitHub;
+        ghBtn.AddThemeFontSizeOverride("font_size", 12);
+        var ghStyle = new StyleBoxFlat
+        {
+            BgColor = new Color(0.2f, 0.2f, 0.3f, 0.9f),
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+        };
+        var ghHover = new StyleBoxFlat
+        {
+            BgColor = new Color(0.3f, 0.3f, 0.4f, 0.9f),
+            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
+            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
+        };
+        ghBtn.AddThemeStyleboxOverride("normal", ghStyle);
+        ghBtn.AddThemeStyleboxOverride("hover", ghHover);
+        ghBtn.Pressed += () => UpdateChecker.OpenGitHub();
+        hbox.AddChild(ghBtn);
 
         // [닫기] 버튼
         var dismissBtn = new Button();

@@ -111,11 +111,24 @@ public static class UpdateChecker
         }
     }
 
-    /// <summary>브라우저에서 릴리즈 페이지를 연다.</summary>
-    public static void OpenReleasePage()
+    /// <summary>NexusMods 모드 페이지 URL.</summary>
+    public const string NEXUSMODS_URL = "https://www.nexusmods.com/slaythespire2/mods/19";
+
+    /// <summary>GitHub 릴리즈 폴백 URL.</summary>
+    public const string GITHUB_RELEASES_URL = "https://github.com/Heinul/sts2_meter/releases/latest";
+
+    /// <summary>브라우저에서 NexusMods 페이지를 연다.</summary>
+    public static void OpenNexusMods()
     {
-        var url = ReleaseUrl ?? "https://github.com/Heinul/sts2_meter/releases/latest";
-        ModEntry.Log($"[DamageMeter] Opening release page: {url}");
+        ModEntry.Log($"[DamageMeter] Opening NexusMods: {NEXUSMODS_URL}");
+        OS.ShellOpen(NEXUSMODS_URL);
+    }
+
+    /// <summary>브라우저에서 GitHub 릴리즈 페이지를 연다.</summary>
+    public static void OpenGitHub()
+    {
+        var url = ReleaseUrl ?? GITHUB_RELEASES_URL;
+        ModEntry.Log($"[DamageMeter] Opening GitHub: {url}");
         OS.ShellOpen(url);
     }
 }

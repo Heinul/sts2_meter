@@ -118,7 +118,8 @@ public static class L10N
     // ===== 업데이트 알림 =====
     public static string UpdateAvailable(string version) =>
         string.Format(Get("update_available_fmt"), version);
-    public static string UpdateOpenPage => Get("update_open_page");
+    public static string UpdateNexusMods => Get("update_nexusmods");
+    public static string UpdateGitHub => Get("update_github");
     public static string UpdateDismiss => Get("update_dismiss");
 
     public static string StatThisTurn(string value) =>
@@ -221,7 +222,8 @@ public static class L10N
         ["mod_description"] = "전투 중 플레이어별 딜량, 받은피해, 방어도, 카드 사용을 추적합니다. 미터/카드로그/받은피해 3개 탭. 솔로 및 협동 지원. F7로 토글.",
 
         ["update_available_fmt"] = "새 버전 {0} 출시!",
-        ["update_open_page"] = "다운로드",
+        ["update_nexusmods"] = "NexusMods",
+        ["update_github"] = "GitHub",
         ["update_dismiss"] = "닫기",
     };
 
@@ -288,7 +290,8 @@ public static class L10N
         ["mod_description"] = "Tracks per-player damage dealt, received, block, and card usage during combat. 3 tabs: Meter, Card Log, Received Damage. Solo & co-op. F7 to toggle.",
 
         ["update_available_fmt"] = "Update {0} available!",
-        ["update_open_page"] = "Download",
+        ["update_nexusmods"] = "NexusMods",
+        ["update_github"] = "GitHub",
         ["update_dismiss"] = "Dismiss",
     };
 }
