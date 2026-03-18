@@ -112,7 +112,7 @@ public static class UpdateChecker
     }
 
     /// <summary>NexusMods 모드 페이지 URL.</summary>
-    public const string NEXUSMODS_URL = "https://www.nexusmods.com/slaythespire2/mods/19";
+    public const string NEXUSMODS_URL = "https://www.nexusmods.com/slaythespire2/mods/47?tab=files";
 
     /// <summary>GitHub 릴리즈 폴백 URL.</summary>
     public const string GITHUB_RELEASES_URL = "https://github.com/Heinul/sts2_meter/releases/latest";
