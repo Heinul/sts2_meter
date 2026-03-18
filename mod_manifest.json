@@ -1,7 +1,11 @@
 {
-"pck_name": "DamageMeterMod",
-"name": "Damage Meter",
-"author": "HeiNul",
-"description": "Tracks per-player damage dealt, received, block, and card usage during combat. 3 tabs: Meter, Card Log, Received Damage. Solo & co-op. F7 to toggle.",
-"version": "1.3.1"
+  "id": "DamageMeterMod",
+  "name": "Damage Meter",
+  "author": "HeiNul",
+  "description": "Tracks per-player damage dealt, received, block, and card usage during combat. 3 tabs: Meter, Card Log, Received Damage. Solo & co-op. F7 to toggle.",
+  "version": "1.3.1",
+  "has_pck": false,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": false
 }

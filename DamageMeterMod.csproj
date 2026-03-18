@@ -39,14 +39,15 @@
     </Reference>
   </ItemGroup>
 
-  <!-- 빌드 후 mods/ 폴더에 직접 복사 (BetterSpire2 방식) -->
+  <!-- 빌드 후 mods/ 폴더에 DLL + JSON manifest 복사 -->
   <Target Name="CopyToMods" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
     <PropertyGroup>
       <ModsDir>$(STS2GamePath)\mods</ModsDir>
     </PropertyGroup>
     <MakeDir Directories="$(ModsDir)" />
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(ModsDir)" />
-    <Message Text="[DamageMeter] DLL copied to $(ModsDir)" Importance="high" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\mod_manifest.json" DestinationFiles="$(ModsDir)\$(AssemblyName).json" />
+    <Message Text="[DamageMeter] DLL + JSON manifest copied to $(ModsDir)" Importance="high" />
   </Target>
 
 </Project>

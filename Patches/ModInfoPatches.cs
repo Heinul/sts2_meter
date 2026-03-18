@@ -12,7 +12,7 @@ namespace DamageMeterMod.Patches;
 ///   _title (MegaRichTextLabel) — 모드 이름
 ///   _description (MegaRichTextLabel) — 모드 설명
 ///
-/// 패치 후 pckName == "DamageMeterMod"인 경우에만 L10N 값으로 교체.
+/// 패치 후 id == "DamageMeterMod"인 경우에만 L10N 값으로 교체.
 /// </summary>
 public static class ModInfoPatches
 {
@@ -20,7 +20,7 @@ public static class ModInfoPatches
     private static FieldInfo? _titleField;
     private static FieldInfo? _descField;
     private static FieldInfo? _manifestField;
-    private static FieldInfo? _pckNameField;
+    private static FieldInfo? _idField;
     private static bool _fieldsResolved;
 
     [HarmonyPatch]
@@ -54,9 +54,9 @@ public static class ModInfoPatches
                 var manifest = _manifestField?.GetValue(__0);
                 if (manifest == null) return;
 
-                // pckName 확인 — 우리 모드인지
-                var pckName = _pckNameField?.GetValue(manifest) as string;
-                if (pckName != "DamageMeterMod") return;
+                // id 확인 — 우리 모드인지
+                var modId = _idField?.GetValue(manifest) as string;
+                if (modId != "DamageMeterMod") return;
 
                 // 타이틀 교체
                 var titleNode = _titleField?.GetValue(__instance);
@@ -87,12 +87,12 @@ public static class ModInfoPatches
         if (_manifestField != null)
         {
             var manifestType = _manifestField.FieldType;
-            _pckNameField = AccessTools.Field(manifestType, "pckName");
+            _idField = AccessTools.Field(manifestType, "id");
         }
 
         ModEntry.LogDebug($"[DamageMeter] ModInfo fields resolved: " +
             $"title={_titleField != null}, desc={_descField != null}, " +
-            $"manifest={_manifestField != null}, pckName={_pckNameField != null}");
+            $"manifest={_manifestField != null}, id={_idField != null}");
     }
 
     /// <summary>
