@@ -1,5 +1,6 @@
 using System.Reflection;
 using HarmonyLib;
+using Steamworks;
 using DamageMeterMod.Core;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -29,24 +30,19 @@ namespace DamageMeterMod.Patches;
 /// </summary>
 public static class CombatPatches
 {
-    /// <summary>Player 객체에서 표시 이름을 가져옴. DisplayName → Creature.Name → fallback 순서.</summary>
+    /// <summary>Player의 Steam 닉네임을 가져옴. Steamworks 캐시에서 읽으므로 추가 통신 없음.</summary>
     public static string GetPlayerDisplayName(Player player)
     {
         try
         {
-            // Player.DisplayName 리플렉션으로 시도
-            var prop = player.GetType().GetProperty("DisplayName");
-            if (prop != null)
-            {
-                var val = prop.GetValue(player)?.ToString();
-                if (!string.IsNullOrEmpty(val))
-                    return val;
-            }
+            var steamId = new CSteamID(player.NetId);
+            string name = SteamFriends.GetFriendPersonaName(steamId);
+            if (!string.IsNullOrEmpty(name) && name != "[unknown]")
+                return name;
         }
         catch { }
 
-        // fallback: Creature.Name → Player_{NetId}
-        return player.Creature?.Name ?? $"Player_{player.NetId}";
+        return $"Player_{player.NetId}";
     }
 
     /// ---------------------------------------------------------------

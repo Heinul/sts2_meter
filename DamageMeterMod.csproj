@@ -37,6 +37,12 @@
       <HintPath>$(STS2DataPath)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
+
+    <!-- Steamworks.NET (Steam 닉네임 조회용) -->
+    <Reference Include="Steamworks.NET">
+      <HintPath>$(STS2DataPath)\Steamworks.NET.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- 빌드 후 mods/ 폴더에 DLL + JSON manifest 복사 -->
