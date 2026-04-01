@@ -29,6 +29,26 @@ namespace DamageMeterMod.Patches;
 /// </summary>
 public static class CombatPatches
 {
+    /// <summary>Player 객체에서 표시 이름을 가져옴. DisplayName → Creature.Name → fallback 순서.</summary>
+    public static string GetPlayerDisplayName(Player player)
+    {
+        try
+        {
+            // Player.DisplayName 리플렉션으로 시도
+            var prop = player.GetType().GetProperty("DisplayName");
+            if (prop != null)
+            {
+                var val = prop.GetValue(player)?.ToString();
+                if (!string.IsNullOrEmpty(val))
+                    return val;
+            }
+        }
+        catch { }
+
+        // fallback: Creature.Name → Player_{NetId}
+        return player.Creature?.Name ?? $"Player_{player.NetId}";
+    }
+
     /// ---------------------------------------------------------------
     /// 패치 1: AfterDamageGiven — 데미지가 적용된 후
     /// ---------------------------------------------------------------
@@ -92,12 +112,12 @@ public static class CombatPatches
                 if (dealer.IsPlayer)
                 {
                     player = dealer.Player;
-                    displayName = dealer.Name ?? $"Player_{player?.NetId}";
+                    displayName = player != null ? GetPlayerDisplayName(player) : (dealer.Name ?? "Unknown");
                 }
                 else if (dealer.IsPet && dealer.PetOwner != null)
                 {
                     player = dealer.PetOwner;
-                    displayName = player.Creature?.Name ?? $"Player_{player.NetId}";
+                    displayName = GetPlayerDisplayName(player);
                     ModEntry.LogDebug(
                         $"[DamageMeter] Pet damage: {dealer.Name} (owner: {displayName}) → {target?.Name} {damage} dmg");
                 }
@@ -316,9 +336,8 @@ public static class CombatPatches
 
                         string id = player.NetId.ToString();
 
-                        // 표시 이름: Player.Creature.Name 또는 fallback
-                        string name = player.Creature?.Name
-                            ?? $"Player_{id}";
+                        // 표시 이름: Player.DisplayName → Creature.Name → fallback
+                        string name = GetPlayerDisplayName(player);
 
                         playerList.Add((id, name));
                     }

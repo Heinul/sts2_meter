@@ -80,7 +80,7 @@ public static class DamageReceivedPatches
                 if (player == null) return;
 
                 string playerId = player.NetId.ToString();
-                string playerName = target.Name ?? L10N.Unknown;
+                string playerName = CombatPatches.GetPlayerDisplayName(player);
                 string sourceName = dealer?.Name ?? L10N.Unknown;
 
                 DamageTracker.Instance.RecordDamageReceived(
@@ -144,7 +144,7 @@ public static class DamageReceivedPatches
                     if (player == null) return;
 
                     string playerId = player.NetId.ToString();
-                    string playerName = creature.Name ?? L10N.Unknown;
+                    string playerName = CombatPatches.GetPlayerDisplayName(player);
 
                     DamageTracker.Instance.RecordDamageReceived(
                         playerId, playerName, L10N.Death,

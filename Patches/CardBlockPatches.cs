@@ -198,7 +198,7 @@ public static class CardBlockPatches
                 if (player == null) return;
 
                 string playerId = player.NetId.ToString();
-                string playerName = creature.Name ?? L10N.Unknown;
+                string playerName = CombatPatches.GetPlayerDisplayName(player);
 
                 // 카드 출처가 있으면 카드 이름, 없으면 [효과]
                 string sourceName = ExtractCardName(__4);
