@@ -235,7 +235,7 @@ public static class L10N
         ["exhaust_ethereal"] = "소멸(에테리얼)",
         ["discard_label"] = "버림",
         ["forge_label"] = "단조",
-        ["doom_kill_label"] = "파멸 즉사!",
+        ["doom_kill_label"] = "종말 즉사!",
         ["energy_cost_fmt"] = "({0})",
 
         ["update_available_fmt"] = "새 버전 {0} 출시!",
