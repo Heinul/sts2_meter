@@ -214,6 +214,11 @@ dotnet build -c Release
 
 Release build automatically copies the DLL to the game's `mods/` folder.
 
+## Credits / 크레딧
+
+- 종말(Doom) 데미지 추적 기능은 [pnurune/sts2_meter](https://github.com/pnurune/sts2_meter) (MIT License)의 구현을 참고했습니다.
+- Doom damage tracking is based on the implementation in [pnurune/sts2_meter](https://github.com/pnurune/sts2_meter) (MIT License).
+
 ## License
 
 MIT
