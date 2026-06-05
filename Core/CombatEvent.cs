@@ -12,7 +12,7 @@ public enum CombatEventType
     CardExhausted,    // 카드 소멸
     CardDiscarded,    // 카드 버림
     Forge,            // 단조
-    DoomKill          // 파멸 즉사
+    DoomDamage        // 종말 데미지 (HP 캡처 기반 비례 귀속)
 }
 
 /// <summary>

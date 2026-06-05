@@ -145,7 +145,11 @@ public static class L10N
     public static string ExhaustEthereal => Get("exhaust_ethereal");
     public static string DiscardLabel => Get("discard_label");
     public static string ForgeLabel => Get("forge_label");
+    public static string DoomLabel => Get("doom_label");
     public static string DoomKillLabel => Get("doom_kill_label");
+
+    public static string StatDoom(string value) =>
+        string.Format(Get("stat_doom_fmt"), value);
 
     public static string EnergyCostFormat(int cost) =>
         string.Format(Get("energy_cost_fmt"), cost);
@@ -235,7 +239,9 @@ public static class L10N
         ["exhaust_ethereal"] = "소멸(에테리얼)",
         ["discard_label"] = "버림",
         ["forge_label"] = "단조",
+        ["doom_label"] = "종말",
         ["doom_kill_label"] = "종말 즉사!",
+        ["stat_doom_fmt"] = "종말: {0}",
         ["energy_cost_fmt"] = "({0})",
 
         ["update_available_fmt"] = "새 버전 {0} 출시!",
@@ -310,7 +316,9 @@ public static class L10N
         ["exhaust_ethereal"] = "Exhaust(Ethereal)",
         ["discard_label"] = "Discard",
         ["forge_label"] = "Forge",
+        ["doom_label"] = "Doom",
         ["doom_kill_label"] = "Doom Kill!",
+        ["stat_doom_fmt"] = "Doom: {0}",
         ["energy_cost_fmt"] = "({0})",
 
         ["update_available_fmt"] = "Update {0} available!",

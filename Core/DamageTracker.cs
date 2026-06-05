@@ -362,28 +362,40 @@ public sealed class DamageTracker
         OnCombatLogChanged?.Invoke();
     }
 
-    /// <summary>파멸(Doom) 즉사 기록.</summary>
-    public void RecordDoomKill(string monsterName)
+    /// <summary>종말(Doom) 데미지 기록. 몬스터 남은 HP를 플레이어에게 귀속.</summary>
+    public void RecordDoomDamage(string playerId, string playerName,
+        string targetName, int damageAmount, bool wasKill)
     {
-        if (!IsActive) return;
+        if (!IsActive || damageAmount <= 0 || string.IsNullOrEmpty(playerId)) return;
+
+        string displayName = string.IsNullOrEmpty(playerName) ? playerId : playerName;
 
         lock (_dataLock)
         {
+            if (_records.TryGetValue(playerId, out var record))
+            {
+                record.AddDoomDamage(damageAmount);
+                _records[playerId] = record;
+            }
+
             _combatLog.Add(new CombatEvent
             {
                 Turn = CombatTurn,
-                EventType = CombatEventType.DoomKill,
-                PlayerId = string.Empty,
-                PlayerName = string.Empty,
-                CardName = string.Empty,
-                TargetName = monsterName ?? L10N.Unknown,
+                EventType = CombatEventType.DoomDamage,
+                PlayerId = playerId,
+                PlayerName = displayName,
+                CardName = L10N.DoomLabel,
+                TargetName = targetName ?? L10N.Unknown,
                 SourceName = string.Empty,
-                Damage = 0,
-                WasKill = true,
+                Damage = damageAmount,
+                UnblockedDamage = damageAmount,
+                BlockedDamage = 0,
+                WasKill = wasKill,
                 TimestampTicks = DateTime.UtcNow.Ticks
             });
         }
 
+        OnDataChanged?.Invoke();
         OnCombatLogChanged?.Invoke();
     }
 
@@ -535,6 +547,7 @@ public sealed class DamageTracker
                     TotalDamage = r.TotalDamage,
                     DirectDamage = r.DirectDamage,
                     PoisonDamage = r.PoisonDamage,
+                    DoomDamage = r.DoomDamage,
                     Percentage = grandTotal > 0
                         ? (float)r.TotalDamage / grandTotal * 100f
                         : 0f,
@@ -671,6 +684,7 @@ public sealed class DamageTracker
                     TotalDamage = r.TotalDamage,
                     DirectDamage = r.DirectDamage,
                     PoisonDamage = r.PoisonDamage,
+                    DoomDamage = r.DoomDamage,
                     Percentage = grandTotal > 0
                         ? (float)r.TotalDamage / grandTotal * 100f : 0f,
                     HitCount = r.HitCount,
@@ -753,6 +767,7 @@ public readonly struct PlayerDamageSnapshot
     public required int TotalDamage { get; init; }
     public required int DirectDamage { get; init; }
     public required int PoisonDamage { get; init; }
+    public required int DoomDamage { get; init; }
     public required float Percentage { get; init; }
     public required int HitCount { get; init; }
     public required int MaxSingleHit { get; init; }

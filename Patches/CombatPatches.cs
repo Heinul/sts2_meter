@@ -144,6 +144,7 @@ public static class CombatPatches
 
                 // 독 귀속을 위해 마지막 행동 플레이어 기록
                 PoisonPatches.SetLastActingPlayer(playerId, displayName);
+                DoomPatches.SetLastActingPlayer(playerId, displayName);
 
                 // 카드 이름 추출
                 string cardName = L10N.Unknown;
@@ -360,6 +361,7 @@ public static class CombatPatches
                 }
 
                 PoisonPatches.ResetTracking();
+                DoomPatches.ResetTracking();
                 DamageTracker.Instance.StartCombat(playerList);
 
                 // 로컬 플레이어 탐지

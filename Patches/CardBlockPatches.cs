@@ -127,6 +127,7 @@ public static class CardBlockPatches
 
                 // 독 귀속용 마지막 행동 플레이어 갱신
                 PoisonPatches.SetLastActingPlayer(playerId, playerName);
+                DoomPatches.SetLastActingPlayer(playerId, playerName);
 
                 // 에너지 비용 추출 (CardPlay.Resources.EnergySpent)
                 int energyCost = 0;
@@ -425,56 +426,4 @@ public static class CardBlockPatches
         }
     }
 
-    // ---------------------------------------------------------------
-    // 패치 13: AfterDiedToDoom — 파멸(Doom) 즉사 후 (베타 전용)
-    // ---------------------------------------------------------------
-    [HarmonyPatch]
-    public static class AfterDiedToDoomPatch
-    {
-        [HarmonyTargetMethod]
-        public static MethodBase TargetMethod()
-        {
-            var hookType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook");
-            if (hookType == null)
-                throw new InvalidOperationException("[DamageMeter] Hook type not found");
-
-            var method = AccessTools.Method(hookType, "AfterDiedToDoom");
-            if (method == null)
-            {
-                ModEntry.LogWarning("[DamageMeter] Hook.AfterDiedToDoom not found (may not exist in this version)");
-                throw new InvalidOperationException("[DamageMeter] Hook.AfterDiedToDoom not found");
-            }
-
-            ModEntry.Log($"[DamageMeter] Found Hook.AfterDiedToDoom");
-            return method;
-        }
-
-        /// <summary>__1 = IReadOnlyList&lt;Creature&gt; (파멸로 죽은 크리처 목록)</summary>
-        [HarmonyPostfix]
-        public static void Postfix(object __1)
-        {
-            try
-            {
-                if (!DamageTracker.Instance.IsActive) return;
-                if (__1 == null) return;
-
-                if (__1 is System.Collections.IEnumerable creatures)
-                {
-                    foreach (var obj in creatures)
-                    {
-                        if (obj is Creature creature)
-                        {
-                            string name = creature.Name ?? L10N.Unknown;
-                            DamageTracker.Instance.RecordDoomKill(name);
-                            ModEntry.Log($"[DamageMeter] 파멸 즉사: {name}");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                ModEntry.LogError($"[DamageMeter] AfterDiedToDoom error: {ex.Message}");
-            }
-        }
-    }
 }

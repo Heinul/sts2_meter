@@ -12,6 +12,7 @@ public struct PlayerDamageRecord
     public int TotalDamage { get; private set; }
     public int DirectDamage { get; private set; }
     public int PoisonDamage { get; private set; }
+    public int DoomDamage { get; private set; }
     public int HitCount { get; private set; }
     public int MaxSingleHit { get; private set; }
     public int CurrentTurnDamage { get; private set; }
@@ -28,6 +29,7 @@ public struct PlayerDamageRecord
         TotalDamage = 0;
         DirectDamage = 0;
         PoisonDamage = 0;
+        DoomDamage = 0;
         HitCount = 0;
         MaxSingleHit = 0;
         CurrentTurnDamage = 0;
@@ -59,6 +61,15 @@ public struct PlayerDamageRecord
         CurrentTurnDamage += amount;
     }
 
+    /// <summary>종말 데미지 추가 (비율 귀속).</summary>
+    public void AddDoomDamage(int amount)
+    {
+        if (amount <= 0) return;
+        TotalDamage += amount;
+        DoomDamage += amount;
+        CurrentTurnDamage += amount;
+    }
+
     /// <summary>받은 데미지 추가.</summary>
     public void AddDamageReceived(int total, int blocked)
     {
@@ -79,6 +90,7 @@ public struct PlayerDamageRecord
         TotalDamage = 0;
         DirectDamage = 0;
         PoisonDamage = 0;
+        DoomDamage = 0;
         HitCount = 0;
         MaxSingleHit = 0;
         CurrentTurnDamage = 0;
@@ -93,6 +105,7 @@ public struct PlayerDamageRecord
         TotalDamage += other.TotalDamage;
         DirectDamage += other.DirectDamage;
         PoisonDamage += other.PoisonDamage;
+        DoomDamage += other.DoomDamage;
         HitCount += other.HitCount;
         MaxSingleHit = Math.Max(MaxSingleHit, other.MaxSingleHit);
         // CurrentTurnDamage: 합산하지 않음 (턴 단위 일시 데이터)

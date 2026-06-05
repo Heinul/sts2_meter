@@ -981,10 +981,12 @@ public partial class DamageMeterOverlay : CanvasLayer
                 parts.Add(L10N.StatMax(entry.MaxSingleHit.ToString("N0")));
             if (entry.PoisonDamage > 0)
                 parts.Add(L10N.StatPoison(entry.PoisonDamage.ToString("N0")));
+            if (entry.DoomDamage > 0)
+                parts.Add(L10N.StatDoom(entry.DoomDamage.ToString("N0")));
         }
         else
         {
-            // 이번 전투 모드: 이번턴 + 턴당 + 최대 + 독
+            // 이번 전투 모드: 이번턴 + 턴당 + 최대 + 독 + 종말
             if (entry.CurrentTurnDamage > 0)
                 parts.Add(L10N.StatThisTurn(entry.CurrentTurnDamage.ToString("N0")));
             if (entry.DamagePerTurn > 0)
@@ -993,6 +995,8 @@ public partial class DamageMeterOverlay : CanvasLayer
                 parts.Add(L10N.StatMax(entry.MaxSingleHit.ToString("N0")));
             if (entry.PoisonDamage > 0)
                 parts.Add(L10N.StatPoison(entry.PoisonDamage.ToString("N0")));
+            if (entry.DoomDamage > 0)
+                parts.Add(L10N.StatDoom(entry.DoomDamage.ToString("N0")));
         }
 
         if (parts.Count > 0)
@@ -1031,7 +1035,7 @@ public partial class DamageMeterOverlay : CanvasLayer
                 case CombatEventType.CardExhausted:
                 case CombatEventType.CardDiscarded:
                 case CombatEventType.Forge:
-                case CombatEventType.DoomKill:
+                case CombatEventType.DoomDamage:
                     cardEvents.Add(evt);
                     break;
                 case CombatEventType.CardPlayed:
@@ -1130,7 +1134,7 @@ public partial class DamageMeterOverlay : CanvasLayer
                 foreach (var evt in group)
                 {
                     count++;
-                    if (evt.EventType == CombatEventType.DamageDealt || evt.EventType == CombatEventType.PoisonDamage)
+                    if (evt.EventType == CombatEventType.DamageDealt || evt.EventType == CombatEventType.PoisonDamage || evt.EventType == CombatEventType.DoomDamage)
                         totalDmg += evt.Damage;
                     else if (evt.EventType == CombatEventType.BlockGained || evt.EventType == CombatEventType.Forge)
                         totalBlock += evt.Damage;
@@ -1447,17 +1451,19 @@ public partial class DamageMeterOverlay : CanvasLayer
                 row.AddChild(dmgLabel);
                 break;
             }
-            case CombatEventType.DoomKill:
+            case CombatEventType.DoomDamage:
             {
-                var infoLabel = CreateLabel($"{L10N.DoomKillLabel} {evt.TargetName}", 10, DoomColor);
+                var killText = evt.WasKill ? L10N.Kill : "";
+                var infoLabel = CreateLabel($"{L10N.DoomLabel} → {evt.TargetName}", 10, DoomColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
                 infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
-                var spacer = new Control();
-                spacer.CustomMinimumSize = new Vector2(65, 0);
-                row.AddChild(spacer);
+                var dmgLabel = CreateLabel($"{evt.Damage:N0}{killText}", 10, DoomColor);
+                dmgLabel.HorizontalAlignment = HorizontalAlignment.Right;
+                dmgLabel.CustomMinimumSize = new Vector2(65, 0);
+                row.AddChild(dmgLabel);
                 break;
             }
         }
