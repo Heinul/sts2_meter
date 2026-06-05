@@ -21,6 +21,8 @@ public static class ModInfoPatches
     private static FieldInfo? _descField;
     private static FieldInfo? _manifestField;
     private static FieldInfo? _idField;
+    private static FieldInfo? _authorField;
+    private static FieldInfo? _versionField;
     private static bool _fieldsResolved;
 
     [HarmonyPatch]
@@ -63,10 +65,20 @@ public static class ModInfoPatches
                 if (titleNode != null)
                     SetNodeText(titleNode, L10N.ModName);
 
-                // 설명 교체
+                // 설명 교체 — 게임 포맷(Author/Version + 설명)을 그대로 재현하되
+                // 설명 본문만 로컬라이즈. 게임 Fill()이 _description 하나에 통합하므로
+                // 단순 교체 시 Author/Version이 사라짐.
                 var descNode = _descField?.GetValue(__instance);
                 if (descNode != null)
-                    SetNodeText(descNode, L10N.ModDescription);
+                {
+                    string author = _authorField?.GetValue(manifest) as string ?? "unknown";
+                    string version = _versionField?.GetValue(manifest) as string ?? "unknown";
+                    string composed =
+                        $"[gold]Author[/gold]: {author}\n" +
+                        $"[gold]Version[/gold]: {version}\n\n" +
+                        L10N.ModDescription;
+                    SetNodeText(descNode, composed);
+                }
 
                 ModEntry.LogDebug($"[DamageMeter] ModInfo localized: locale={L10N.Locale}");
             }
@@ -88,11 +100,14 @@ public static class ModInfoPatches
         {
             var manifestType = _manifestField.FieldType;
             _idField = AccessTools.Field(manifestType, "id");
+            _authorField = AccessTools.Field(manifestType, "author");
+            _versionField = AccessTools.Field(manifestType, "version");
         }
 
         ModEntry.LogDebug($"[DamageMeter] ModInfo fields resolved: " +
             $"title={_titleField != null}, desc={_descField != null}, " +
-            $"manifest={_manifestField != null}, id={_idField != null}");
+            $"manifest={_manifestField != null}, id={_idField != null}, " +
+            $"author={_authorField != null}, version={_versionField != null}");
     }
 
     /// <summary>
