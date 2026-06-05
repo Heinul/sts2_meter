@@ -9,14 +9,13 @@ namespace DamageMeterMod.Patches;
 /// <summary>
 /// 독/DoT 데미지 비율 귀속 패치.
 ///
-/// 확인된 시그니처 (로그에서 발견):
-///   AfterPowerAmountChanged(
-///     [0] CombatState combatState,
-///     [1] PowerModel power,
-///     [2] Decimal amount,        ← System.Decimal 타입!
-///     [3] Creature applier,
-///     [4] CardModel cardSource)
+/// 확인된 시그니처:
+///   스테이블 (5 params):
+///     AfterPowerAmountChanged(CombatState, PowerModel, Decimal, Creature, CardModel)
+///   베타 v0.107.0 (6 params — PlayerChoiceContext 추가):
+///     AfterPowerAmountChanged(ICombatState, PlayerChoiceContext, PowerModel, Decimal, Creature, CardModel)
 ///
+/// 양쪽 호환: TargetMethod에서 파라미터 수 감지 → object[] __args + 오프셋으로 접근.
 /// amount는 변경 후 현재 값. 이전 값은 직접 추적.
 /// </summary>
 public static class PoisonPatches
@@ -70,6 +69,10 @@ public static class PoisonPatches
     [HarmonyPatch]
     public static class AfterPowerAmountChangedPatch
     {
+        // 스테이블(5파람): offset=0 → PowerModel[1], Decimal[2], Creature[3]
+        // 베타(6파람):     offset=1 → PowerModel[2], Decimal[3], Creature[4]
+        private static int _paramOffset;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -82,7 +85,8 @@ public static class PoisonPatches
                 throw new InvalidOperationException("[DamageMeter] Hook.AfterPowerAmountChanged not found");
 
             var parameters = method.GetParameters();
-            ModEntry.Log($"[DamageMeter] Found Hook.AfterPowerAmountChanged with {parameters.Length} params:");
+            _paramOffset = parameters.Length >= 6 ? 1 : 0;
+            ModEntry.Log($"[DamageMeter] Found Hook.AfterPowerAmountChanged with {parameters.Length} params (offset={_paramOffset}):");
             foreach (var p in parameters)
             {
                 ModEntry.Log($"[DamageMeter]   param[{p.Position}]: {p.ParameterType.FullName} {p.Name}");
@@ -92,28 +96,30 @@ public static class PoisonPatches
         }
 
         /// <summary>
-        /// Typed params:
-        ///   __1 = PowerModel power (직접 타이핑)
-        ///   __2 = Decimal amount (변경 후 현재 수치)
-        ///   __3 = Creature applier (독을 건 플레이어, 틱 시 null 가능)
+        /// object[] __args로 전체 파라미터를 받아 오프셋으로 접근.
+        /// 스테이블/베타 양쪽 호환.
         /// </summary>
         [HarmonyPostfix]
-        public static void Postfix(PowerModel __1, decimal __2, Creature __3)
+        public static void Postfix(object[] __args)
         {
             try
             {
                 if (!DamageTracker.Instance.IsActive) return;
-                if (__1 == null) return;
+
+                // 오프셋 적용하여 파라미터 추출
+                var power = __args[1 + _paramOffset] as PowerModel;
+                if (power == null) return;
+                decimal amount = (decimal)__args[2 + _paramOffset];
+                var applier = __args[3 + _paramOffset] as Creature;
 
 #if DEBUG
-                // 모든 파워 변경을 파일에 기록 (Poison 아닌 것도 포함)
                 PoisonDebugLogger.IncrementHookCall();
-                PoisonDebugLogger.LogAllPowerChanges(__1, __2);
+                PoisonDebugLogger.LogAllPowerChanges(power, amount);
 #endif
 
                 // === 파워 이름 확인 (LocString → 로컬라이즈된 이름) ===
-                string powerName = CombatPatches.AfterDamageGivenPatch.GetLocStringText(__1.Title)
-                    ?? __1.GetType().Name;
+                string powerName = CombatPatches.AfterDamageGivenPatch.GetLocStringText(power.Title)
+                    ?? power.GetType().Name;
 
                 if (string.IsNullOrEmpty(powerName))
                 {
@@ -136,16 +142,16 @@ public static class PoisonPatches
                 if (!isPoisonMatch) return;
 
                 // === 파워 소유자(몬스터) 찾기 ===
-                var ownerCreature = __1.Owner;
+                var ownerCreature = power.Owner;
 
 #if DEBUG
-                PoisonDebugLogger.LogPowerAmountChanged(__1, __2, __3,
+                PoisonDebugLogger.LogPowerAmountChanged(power, amount, applier,
                     powerName, ownerCreature?.Name, ownerCreature?.IsMonster ?? false);
 #endif
 
                 if (ownerCreature == null)
                 {
-                    ModEntry.LogDebug($"[DamageMeter] Poison PowerModel owner is null. Type: {__1.GetType().FullName}");
+                    ModEntry.LogDebug($"[DamageMeter] Poison PowerModel owner is null. Type: {power.GetType().FullName}");
 #if DEBUG
                     PoisonDebugLogger.Log("  !! Owner가 null → 스킵");
 #endif
@@ -164,13 +170,11 @@ public static class PoisonPatches
                 string monsterKey = $"{monsterName}_{ownerCreature.GetHashCode()}";
 
                 // === 이전 수치와 비교 ===
-                // __2는 훅 파라미터 amount, __1.Amount는 PowerModel의 실제 현재값
-                int paramAmount = (int)__2;
-                int modelAmount = (int)__1.Amount;
+                int paramAmount = (int)amount;
+                int modelAmount = (int)power.Amount;
 #if DEBUG
-                PoisonDebugLogger.Log($"  !! 비교: __2(param)={paramAmount}, __1.Amount(model)={modelAmount}");
+                PoisonDebugLogger.Log($"  !! 비교: amount(param)={paramAmount}, power.Amount(model)={modelAmount}");
 #endif
-                // PowerModel.Amount가 실제 현재 총량 (훅 파라미터가 아닌)
                 int currentAmount = modelAmount;
                 _lastPoisonAmounts.TryGetValue(monsterKey, out int oldAmount);
                 int diff = currentAmount - oldAmount;
@@ -186,7 +190,7 @@ public static class PoisonPatches
 #endif
 
                 ModEntry.LogDebug(
-                    $"[DamageMeter] 독 변화: {monsterName} {oldAmount}→{currentAmount} (diff={diff}, applier={__3?.Name})");
+                    $"[DamageMeter] 독 변화: {monsterName} {oldAmount}→{currentAmount} (diff={diff}, applier={applier?.Name})");
 
                 if (diff > 0)
                 {
@@ -195,13 +199,13 @@ public static class PoisonPatches
                     string applicantName = _lastActingPlayerName;
 
 #if DEBUG
-                    PoisonDebugLogger.Log($"  귀속 후보: lastActing={_lastActingPlayerId} ({_lastActingPlayerName}), applier={__3?.Name}");
+                    PoisonDebugLogger.Log($"  귀속 후보: lastActing={_lastActingPlayerId} ({_lastActingPlayerName}), applier={applier?.Name}");
 #endif
 
-                    if (__3 != null && __3.IsPlayer && __3.Player != null)
+                    if (applier != null && applier.IsPlayer && applier.Player != null)
                     {
-                        applicantId = __3.Player.NetId.ToString();
-                        applicantName = __3.Name ?? applicantId;
+                        applicantId = applier.Player.NetId.ToString();
+                        applicantName = applier.Name ?? applicantId;
 #if DEBUG
                         PoisonDebugLogger.Log($"  → applier 파라미터 사용: {applicantId} ({applicantName})");
 #endif
@@ -210,8 +214,8 @@ public static class PoisonPatches
                     {
 #if DEBUG
                         PoisonDebugLogger.Log($"  → lastActingPlayer 사용: {applicantId} ({applicantName})");
-                        if (__3 != null)
-                            PoisonDebugLogger.Log($"  (applier가 플레이어가 아님: IsPlayer={__3.IsPlayer}, Player={__3.Player})");
+                        if (applier != null)
+                            PoisonDebugLogger.Log($"  (applier가 플레이어가 아님: IsPlayer={applier.IsPlayer}, Player={applier.Player})");
                         else
                             PoisonDebugLogger.Log("  (applier가 null)");
 #endif
@@ -247,8 +251,6 @@ public static class PoisonPatches
                 }
                 else if (diff < -1)
                 {
-                    // 독 대량 감소: 몬스터 사망으로 독이 한번에 제거되었을 수 있음
-                    // 이 경우에도 마지막 틱 데미지(=oldAmount)를 기록
                     int poisonDamage = oldAmount;
 #if DEBUG
                     PoisonDebugLogger.Log($"  독 대량 감소: {oldAmount} → {currentAmount}, diff={diff} → 틱 데미지={poisonDamage}로 처리");

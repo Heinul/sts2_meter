@@ -8,7 +8,11 @@ public enum CombatEventType
     PoisonDamage,     // 독 데미지 (비율 귀속)
     Death,            // 사망
     BlockGained,      // 블록(쉴드) 획득
-    CardPlayed        // 카드 사용 (데미지 없는 카드 포함)
+    CardPlayed,       // 카드 사용 (데미지 없는 카드 포함)
+    CardExhausted,    // 카드 소멸
+    CardDiscarded,    // 카드 버림
+    Forge,            // 단조
+    DoomKill          // 파멸 즉사
 }
 
 /// <summary>
@@ -49,6 +53,9 @@ public readonly struct CombatEvent
 
     /// <summary>대상이 죽었는지 여부.</summary>
     public bool WasKill { get; init; }
+
+    /// <summary>카드 에너지 비용 (0 = 비용 없음 또는 미확인).</summary>
+    public int EnergyCost { get; init; }
 
     /// <summary>이벤트 발생 시각 (UTC ticks).</summary>
     public long TimestampTicks { get; init; }

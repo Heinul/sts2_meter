@@ -261,7 +261,7 @@ public sealed class DamageTracker
 
     /// <summary>카드 사용 기록 (데미지 없는 카드).</summary>
     public void RecordCardPlayed(string playerId, string playerName,
-        string cardName, string cardType)
+        string cardName, string cardType, int energyCost = 0)
     {
         if (!IsActive) return;
 
@@ -280,6 +280,106 @@ public sealed class DamageTracker
                 UnblockedDamage = 0,
                 BlockedDamage = 0,
                 WasKill = false,
+                EnergyCost = energyCost,
+                TimestampTicks = DateTime.UtcNow.Ticks
+            });
+        }
+
+        OnCombatLogChanged?.Invoke();
+    }
+
+    /// <summary>카드 소멸 기록.</summary>
+    public void RecordCardExhausted(string playerId, string playerName,
+        string cardName, bool causedByEthereal)
+    {
+        if (!IsActive) return;
+
+        lock (_dataLock)
+        {
+            _combatLog.Add(new CombatEvent
+            {
+                Turn = CombatTurn,
+                EventType = CombatEventType.CardExhausted,
+                PlayerId = playerId,
+                PlayerName = playerName,
+                CardName = cardName ?? L10N.Unknown,
+                TargetName = causedByEthereal ? "Ethereal" : "",
+                SourceName = string.Empty,
+                Damage = 0,
+                TimestampTicks = DateTime.UtcNow.Ticks
+            });
+        }
+
+        OnCombatLogChanged?.Invoke();
+    }
+
+    /// <summary>카드 버림 기록.</summary>
+    public void RecordCardDiscarded(string playerId, string playerName, string cardName)
+    {
+        if (!IsActive) return;
+
+        lock (_dataLock)
+        {
+            _combatLog.Add(new CombatEvent
+            {
+                Turn = CombatTurn,
+                EventType = CombatEventType.CardDiscarded,
+                PlayerId = playerId,
+                PlayerName = playerName,
+                CardName = cardName ?? L10N.Unknown,
+                TargetName = string.Empty,
+                SourceName = string.Empty,
+                Damage = 0,
+                TimestampTicks = DateTime.UtcNow.Ticks
+            });
+        }
+
+        OnCombatLogChanged?.Invoke();
+    }
+
+    /// <summary>단조(Forge) 기록.</summary>
+    public void RecordForge(string playerId, string playerName,
+        int amount, string sourceName)
+    {
+        if (!IsActive || amount <= 0) return;
+
+        lock (_dataLock)
+        {
+            _combatLog.Add(new CombatEvent
+            {
+                Turn = CombatTurn,
+                EventType = CombatEventType.Forge,
+                PlayerId = playerId,
+                PlayerName = playerName,
+                CardName = string.Empty,
+                TargetName = string.Empty,
+                SourceName = sourceName ?? L10N.Unknown,
+                Damage = amount,
+                TimestampTicks = DateTime.UtcNow.Ticks
+            });
+        }
+
+        OnCombatLogChanged?.Invoke();
+    }
+
+    /// <summary>파멸(Doom) 즉사 기록.</summary>
+    public void RecordDoomKill(string monsterName)
+    {
+        if (!IsActive) return;
+
+        lock (_dataLock)
+        {
+            _combatLog.Add(new CombatEvent
+            {
+                Turn = CombatTurn,
+                EventType = CombatEventType.DoomKill,
+                PlayerId = string.Empty,
+                PlayerName = string.Empty,
+                CardName = string.Empty,
+                TargetName = monsterName ?? L10N.Unknown,
+                SourceName = string.Empty,
+                Damage = 0,
+                WasKill = true,
                 TimestampTicks = DateTime.UtcNow.Ticks
             });
         }

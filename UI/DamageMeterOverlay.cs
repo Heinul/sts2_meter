@@ -28,6 +28,10 @@ public partial class DamageMeterOverlay : CanvasLayer
     private static readonly Color BlockColor = new(0.3f, 0.65f, 1.0f);
     private static readonly Color PoisonColor = new(0.3f, 0.9f, 0.3f);
     private static readonly Color CardPlayedColor = new(0.8f, 0.8f, 0.6f);
+    private static readonly Color ExhaustColor = new(0.7f, 0.4f, 0.4f);
+    private static readonly Color DiscardColor = new(0.6f, 0.55f, 0.45f);
+    private static readonly Color ForgeColor = new(1.0f, 0.7f, 0.3f);
+    private static readonly Color DoomColor = new(0.8f, 0.2f, 0.6f);
 
     // 레이아웃 상수
     private const float DEFAULT_PANEL_WIDTH = 360f;
@@ -586,6 +590,8 @@ public partial class DamageMeterOverlay : CanvasLayer
             if (sc != null)
                 sc.CustomMinimumSize = new Vector2(0, _currentHeight);
         }
+        // CanvasLayer 직속 자식은 레이아웃 부모가 없으므로 Size 직접 갱신
+        _panel.Size = _panel.GetCombinedMinimumSize();
     }
 
     // ===== 프레임 업데이트 =====
@@ -630,6 +636,12 @@ public partial class DamageMeterOverlay : CanvasLayer
             if (keyEvent.Keycode == Key.F7)
             {
                 ToggleVisibility();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+            if (keyEvent.Keycode == Key.F6)
+            {
+                ResetPosition();
                 GetViewport().SetInputAsHandled();
                 return;
             }
@@ -1016,6 +1028,10 @@ public partial class DamageMeterOverlay : CanvasLayer
                 case CombatEventType.DamageDealt:
                 case CombatEventType.BlockGained:
                 case CombatEventType.PoisonDamage:
+                case CombatEventType.CardExhausted:
+                case CombatEventType.CardDiscarded:
+                case CombatEventType.Forge:
+                case CombatEventType.DoomKill:
                     cardEvents.Add(evt);
                     break;
                 case CombatEventType.CardPlayed:
@@ -1116,7 +1132,7 @@ public partial class DamageMeterOverlay : CanvasLayer
                     count++;
                     if (evt.EventType == CombatEventType.DamageDealt || evt.EventType == CombatEventType.PoisonDamage)
                         totalDmg += evt.Damage;
-                    else if (evt.EventType == CombatEventType.BlockGained)
+                    else if (evt.EventType == CombatEventType.BlockGained || evt.EventType == CombatEventType.Forge)
                         totalBlock += evt.Damage;
                 }
             }
@@ -1378,13 +1394,67 @@ public partial class DamageMeterOverlay : CanvasLayer
             {
                 // TargetName에 cardType이 저장됨
                 var typeStr = !string.IsNullOrEmpty(evt.TargetName) ? $" ({evt.TargetName})" : "";
-                var infoLabel = CreateLabel($"{evt.CardName}{typeStr}", 10, CardPlayedColor);
+                var costStr = evt.EnergyCost > 0 ? $" {L10N.EnergyCostFormat(evt.EnergyCost)}" : "";
+                var infoLabel = CreateLabel($"{evt.CardName}{typeStr}{costStr}", 10, CardPlayedColor);
                 infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 infoLabel.ClipText = true;
                 infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
                 row.AddChild(infoLabel);
 
-                // 빈 공간 (데미지/블록 없음)
+                var spacer = new Control();
+                spacer.CustomMinimumSize = new Vector2(65, 0);
+                row.AddChild(spacer);
+                break;
+            }
+            case CombatEventType.CardExhausted:
+            {
+                var label = evt.TargetName == "Ethereal" ? L10N.ExhaustEthereal : L10N.ExhaustLabel;
+                var infoLabel = CreateLabel($"{label}: {evt.CardName}", 10, ExhaustColor);
+                infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                infoLabel.ClipText = true;
+                infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
+                row.AddChild(infoLabel);
+
+                var spacer = new Control();
+                spacer.CustomMinimumSize = new Vector2(65, 0);
+                row.AddChild(spacer);
+                break;
+            }
+            case CombatEventType.CardDiscarded:
+            {
+                var infoLabel = CreateLabel($"{L10N.DiscardLabel}: {evt.CardName}", 10, DiscardColor);
+                infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                infoLabel.ClipText = true;
+                infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
+                row.AddChild(infoLabel);
+
+                var spacer = new Control();
+                spacer.CustomMinimumSize = new Vector2(65, 0);
+                row.AddChild(spacer);
+                break;
+            }
+            case CombatEventType.Forge:
+            {
+                var infoLabel = CreateLabel($"{L10N.ForgeLabel}: {evt.SourceName}", 10, ForgeColor);
+                infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                infoLabel.ClipText = true;
+                infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
+                row.AddChild(infoLabel);
+
+                var dmgLabel = CreateLabel($"+{evt.Damage}", 10, ForgeColor);
+                dmgLabel.HorizontalAlignment = HorizontalAlignment.Right;
+                dmgLabel.CustomMinimumSize = new Vector2(65, 0);
+                row.AddChild(dmgLabel);
+                break;
+            }
+            case CombatEventType.DoomKill:
+            {
+                var infoLabel = CreateLabel($"{L10N.DoomKillLabel} {evt.TargetName}", 10, DoomColor);
+                infoLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                infoLabel.ClipText = true;
+                infoLabel.MouseFilter = Control.MouseFilterEnum.Pass;
+                row.AddChild(infoLabel);
+
                 var spacer = new Control();
                 spacer.CustomMinimumSize = new Vector2(65, 0);
                 row.AddChild(spacer);
@@ -1556,6 +1626,31 @@ public partial class DamageMeterOverlay : CanvasLayer
         _isVisible = !_isVisible;
         _panel.Visible = _isVisible;
         SaveSettings();
+    }
+
+    /// <summary>패널 위치와 크기를 기본값으로 초기화. F6 단축키.</summary>
+    public void ResetPosition()
+    {
+        _panel.Position = new Vector2(20, 200);
+        _currentWidth = DEFAULT_PANEL_WIDTH;
+        _currentHeight = DEFAULT_CONTENT_HEIGHT;
+        _isVisible = true;
+        _panel.Visible = true;
+        if (_isMinimized)
+        {
+            _isMinimized = false;
+            _minBtn.Text = "−";
+            _tabBar.Visible = true;
+            _contentArea.Visible = true;
+            _footerSeparator.Visible = true;
+            _footerLabel.Visible = true;
+            _resizeHandleRow.Visible = true;
+            _titleLabel.Text = L10N.Title;
+        }
+        ApplyResize();
+        CallDeferred(nameof(FitPanelToContent));
+        SaveSettings();
+        ModEntry.Log("[DamageMeter] F6: Panel position/size reset to default.");
     }
 
     // ===== 유틸리티 =====

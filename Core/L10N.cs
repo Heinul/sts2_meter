@@ -140,6 +140,16 @@ public static class L10N
     public static string BlockedSuffix(int blocked) =>
         string.Format(Get("blocked_suffix_fmt"), blocked);
 
+    // 카드 라이프사이클
+    public static string ExhaustLabel => Get("exhaust_label");
+    public static string ExhaustEthereal => Get("exhaust_ethereal");
+    public static string DiscardLabel => Get("discard_label");
+    public static string ForgeLabel => Get("forge_label");
+    public static string DoomKillLabel => Get("doom_kill_label");
+
+    public static string EnergyCostFormat(int cost) =>
+        string.Format(Get("energy_cost_fmt"), cost);
+
     // 누적 모드
     public static string ToggleCombat => Get("toggle_combat");
     public static string ToggleRun => Get("toggle_run");
@@ -219,7 +229,14 @@ public static class L10N
         ["stat_per_combat_fmt"] = "전투당: {0}",
 
         ["mod_name"] = "데미지 미터",
-        ["mod_description"] = "전투 중 플레이어별 딜량, 받은피해, 방어도, 카드 사용을 추적합니다. 미터/카드로그/받은피해 3개 탭. 솔로 및 협동 지원. F7로 토글.",
+        ["mod_description"] = "전투 중 플레이어별 딜량, 받은피해, 방어도, 카드 사용을 추적합니다. 미터/카드로그/받은피해 3개 탭. 솔로 및 협동 지원. F7로 토글, F6으로 위치 초기화.",
+
+        ["exhaust_label"] = "소멸",
+        ["exhaust_ethereal"] = "소멸(에테리얼)",
+        ["discard_label"] = "버림",
+        ["forge_label"] = "단조",
+        ["doom_kill_label"] = "파멸 즉사!",
+        ["energy_cost_fmt"] = "({0})",
 
         ["update_available_fmt"] = "새 버전 {0} 출시!",
         ["update_nexusmods"] = "NexusMods",
@@ -287,7 +304,14 @@ public static class L10N
         ["stat_per_combat_fmt"] = "Per combat: {0}",
 
         ["mod_name"] = "Damage Meter",
-        ["mod_description"] = "Tracks per-player damage dealt, received, block, and card usage during combat. 3 tabs: Meter, Card Log, Received Damage. Solo & co-op. F7 to toggle.",
+        ["mod_description"] = "Tracks per-player damage dealt, received, block, and card usage during combat. 3 tabs: Meter, Card Log, Received Damage. Solo & co-op. F7 to toggle, F6 to reset position.",
+
+        ["exhaust_label"] = "Exhaust",
+        ["exhaust_ethereal"] = "Exhaust(Ethereal)",
+        ["discard_label"] = "Discard",
+        ["forge_label"] = "Forge",
+        ["doom_kill_label"] = "Doom Kill!",
+        ["energy_cost_fmt"] = "({0})",
 
         ["update_available_fmt"] = "Update {0} available!",
         ["update_nexusmods"] = "NexusMods",

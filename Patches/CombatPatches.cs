@@ -12,15 +12,17 @@ using MegaCrit.Sts2.Core.Localization;
 namespace DamageMeterMod.Patches;
 
 /// <summary>
-/// sts2.dll v0.98 디컴파일 결과 기반 Harmony 패치.
+/// sts2.dll v0.107.0 베타 기반 Harmony 패치.
 ///
 /// Hook 시스템: MegaCrit.Sts2.Core.Hooks.Hook
 ///
-/// 확인된 시그니처 (System.Reflection.Metadata 기반):
-///   AfterDamageGiven(PlayerChoiceContext, CombatState, Creature dealer, DamageResult results, ValueProp, Creature target, CardModel)
-///   BeforeCombatStart(IRunState, CombatState)
-///   AfterCombatEnd(IRunState, CombatState, CombatRoom)
-///   AfterTurnEnd(CombatState, CombatSide)
+/// 확인된 시그니처 (v0.107.0):
+///   AfterDamageGiven(PlayerChoiceContext, ICombatState, Creature dealer, DamageResult results, ValueProp, Creature target, CardModel)
+///   BeforeCombatStart(IRunState, ICombatState)
+///   AfterCombatEnd(IRunState, ICombatState, CombatRoom)
+///   AfterTurnEnd(ICombatState, CombatSide, IEnumerable<Creature>)
+///
+/// v0.107.0 변경: CombatState → ICombatState 인터페이스로 변경. 런타임에 CombatState로 캐스트.
 ///
 /// 주요 타입 구조:
 ///   DamageResult → TotalDamage, UnblockedDamage, BlockedDamage, OverkillDamage, WasTargetKilled
@@ -30,7 +32,9 @@ namespace DamageMeterMod.Patches;
 /// </summary>
 public static class CombatPatches
 {
-    /// <summary>Player의 Steam 닉네임을 가져옴. Steamworks 캐시에서 읽으므로 추가 통신 없음.</summary>
+    /// <summary>
+    /// Player 표시 이름. Steam 닉네임 → 캐릭터(Creature) 이름 → fallback 순.
+    /// </summary>
     public static string GetPlayerDisplayName(Player player)
     {
         try
@@ -39,6 +43,14 @@ public static class CombatPatches
             string name = SteamFriends.GetFriendPersonaName(steamId);
             if (!string.IsNullOrEmpty(name) && name != "[unknown]")
                 return name;
+        }
+        catch { }
+
+        try
+        {
+            var creatureName = player.Creature?.Name;
+            if (!string.IsNullOrEmpty(creatureName))
+                return creatureName;
         }
         catch { }
 
@@ -288,9 +300,9 @@ public static class CombatPatches
     /// ---------------------------------------------------------------
     /// 패치 2: BeforeCombatStart — 전투 시작 전 초기화
     /// ---------------------------------------------------------------
-    /// 파라미터 순서:
-    ///   0: IRunState    (MegaCrit.Sts2.Core.Run)
-    ///   1: CombatState  (MegaCrit.Sts2.Core.Combat)
+    /// 파라미터 순서 (v0.107.0):
+    ///   0: IRunState      (MegaCrit.Sts2.Core.Run)
+    ///   1: ICombatState   (MegaCrit.Sts2.Core.Combat) ← v0.107.0에서 CombatState→ICombatState 변경
     [HarmonyPatch]
     public static class BeforeCombatStartPatch
     {
@@ -310,11 +322,12 @@ public static class CombatPatches
         }
 
         [HarmonyPostfix]
-        public static void Postfix(object __0, CombatState __1)
+        public static void Postfix(object __0, object __1)
         {
             try
             {
-                var combatState = __1;
+                // v0.107.0: ICombatState 인터페이스로 변경됨. 런타임 객체는 CombatState이므로 캐스트.
+                var combatState = __1 as CombatState;
                 if (combatState == null) return;
 
                 // 런 변경 감지 (IRunState 참조 비교)
@@ -517,9 +530,9 @@ public static class CombatPatches
     /// ---------------------------------------------------------------
     /// 패치 3: AfterCombatEnd — 전투 종료
     /// ---------------------------------------------------------------
-    /// 파라미터 순서:
+    /// 파라미터 순서 (v0.107.0):
     ///   0: IRunState
-    ///   1: CombatState
+    ///   1: ICombatState
     ///   2: CombatRoom
     [HarmonyPatch]
     public static class AfterCombatEndPatch
@@ -625,9 +638,10 @@ public static class CombatPatches
     /// ---------------------------------------------------------------
     /// 패치 4: AfterTurnEnd — 턴 종료
     /// ---------------------------------------------------------------
-    /// 파라미터 순서:
-    ///   0: CombatState
+    /// 파라미터 순서 (v0.107.0):
+    ///   0: ICombatState
     ///   1: CombatSide
+    ///   2: IEnumerable<Creature> participants (신규)
     [HarmonyPatch]
     public static class AfterTurnEndPatch
     {
