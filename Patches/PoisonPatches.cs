@@ -15,7 +15,7 @@ namespace DamageMeterMod.Patches;
 ///   베타 v0.107.0 (6 params — PlayerChoiceContext 추가):
 ///     AfterPowerAmountChanged(ICombatState, PlayerChoiceContext, PowerModel, Decimal, Creature, CardModel)
 ///
-/// 양쪽 호환: TargetMethod에서 파라미터 수 감지 → object[] __args + 오프셋으로 접근.
+/// 양쪽 호환: object[] __args에서 PowerModel/amount/applier를 타입 기준으로 찾아 접근.
 /// amount는 변경 후 현재 값. 이전 값은 직접 추적.
 /// </summary>
 public static class PoisonPatches
@@ -69,10 +69,6 @@ public static class PoisonPatches
     [HarmonyPatch]
     public static class AfterPowerAmountChangedPatch
     {
-        // 스테이블(5파람): offset=0 → PowerModel[1], Decimal[2], Creature[3]
-        // 베타(6파람):     offset=1 → PowerModel[2], Decimal[3], Creature[4]
-        private static int _paramOffset;
-
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -85,8 +81,7 @@ public static class PoisonPatches
                 throw new InvalidOperationException("[DamageMeter] Hook.AfterPowerAmountChanged not found");
 
             var parameters = method.GetParameters();
-            _paramOffset = parameters.Length >= 6 ? 1 : 0;
-            ModEntry.Log($"[DamageMeter] Found Hook.AfterPowerAmountChanged with {parameters.Length} params (offset={_paramOffset}):");
+            ModEntry.Log($"[DamageMeter] Found Hook.AfterPowerAmountChanged with {parameters.Length} params:");
             foreach (var p in parameters)
             {
                 ModEntry.Log($"[DamageMeter]   param[{p.Position}]: {p.ParameterType.FullName} {p.Name}");
@@ -106,11 +101,9 @@ public static class PoisonPatches
             {
                 if (!DamageTracker.Instance.IsActive) return;
 
-                // 오프셋 적용하여 파라미터 추출
-                var power = __args[1 + _paramOffset] as PowerModel;
+                if (!TryGetPowerArgs(__args, out var power, out var amount, out var applier))
+                    return;
                 if (power == null) return;
-                decimal amount = (decimal)__args[2 + _paramOffset];
-                var applier = __args[3 + _paramOffset] as Creature;
 
 #if DEBUG
                 PoisonDebugLogger.IncrementHookCall();
@@ -274,6 +267,64 @@ public static class PoisonPatches
                 PoisonDebugLogger.Log($"  !! 예외 발생: {ex}");
 #endif
             }
+        }
+
+        private static bool TryGetPowerArgs(
+            object[] args,
+            out PowerModel? power,
+            out decimal amount,
+            out Creature? applier)
+        {
+            power = null;
+            amount = 0m;
+            applier = null;
+
+            if (args == null || args.Length == 0)
+                return false;
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] is not PowerModel foundPower)
+                    continue;
+
+                power = foundPower;
+
+                if (i + 1 < args.Length && args[i + 1] is decimal adjacentAmount)
+                {
+                    amount = adjacentAmount;
+                }
+                else
+                {
+                    for (int j = i + 1; j < args.Length; j++)
+                    {
+                        if (args[j] is decimal scannedAmount)
+                        {
+                            amount = scannedAmount;
+                            break;
+                        }
+                    }
+                }
+
+                if (i + 2 < args.Length && args[i + 2] is Creature adjacentApplier)
+                {
+                    applier = adjacentApplier;
+                }
+                else
+                {
+                    for (int j = i + 1; j < args.Length; j++)
+                    {
+                        if (args[j] is Creature scannedApplier)
+                        {
+                            applier = scannedApplier;
+                            break;
+                        }
+                    }
+                }
+
+                return true;
+            }
+
+            return false;
         }
     }
 }

@@ -630,10 +630,10 @@ public partial class DamageMeterOverlay : CanvasLayer
     // ===== 입력 처리 =====
     public override void _Input(InputEvent @event)
     {
-        // F7: 항상 처리 (패널 숨김 상태에서도)
+        // Toggle key: 항상 처리 (패널 숨김 상태에서도)
         if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
         {
-            if (keyEvent.Keycode == Key.F7)
+            if (keyEvent.Keycode == ModSettings.Current.GetToggleKey())
             {
                 ToggleVisibility();
                 GetViewport().SetInputAsHandled();

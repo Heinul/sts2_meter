@@ -265,6 +265,13 @@ public static class CardBlockPatches
     [HarmonyPatch]
     public static class AfterCardExhaustedPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare()
+        {
+            var hookType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook");
+            return hookType != null && AccessTools.Method(hookType, "AfterCardExhausted") != null;
+        }
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -316,6 +323,13 @@ public static class CardBlockPatches
     [HarmonyPatch]
     public static class AfterCardDiscardedPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare()
+        {
+            var hookType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook");
+            return hookType != null && AccessTools.Method(hookType, "AfterCardDiscarded") != null;
+        }
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -367,6 +381,13 @@ public static class CardBlockPatches
     [HarmonyPatch]
     public static class AfterForgePatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare()
+        {
+            var hookType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook");
+            return hookType != null && AccessTools.Method(hookType, "AfterForge") != null;
+        }
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
