@@ -114,6 +114,13 @@ public static class L10N
     // ===== 모드 정보 (게임 모드 화면) =====
     public static string ModName => Get("mod_name");
     public static string ModDescription => Get("mod_description");
+    public static string ModSettingsTitle => Get("mod_settings_title");
+    public static string ToggleKeyLabel => Get("toggle_key_label");
+    public static string ToggleKeyCurrent(string key) =>
+        string.Format(Get("toggle_key_current_fmt"), key);
+    public static string ToggleKeyCapture => Get("toggle_key_capture");
+    public static string ToggleKeyReset => Get("toggle_key_reset");
+    public static string ToggleKeyReserved => Get("toggle_key_reserved");
 
     // ===== 업데이트 알림 =====
     public static string UpdateAvailable(string version) =>
@@ -233,7 +240,13 @@ public static class L10N
         ["stat_per_combat_fmt"] = "전투당: {0}",
 
         ["mod_name"] = "데미지 미터",
-        ["mod_description"] = "전투 중 플레이어별 딜량, 받은피해, 방어도, 카드 사용을 추적합니다. 미터/카드로그/받은피해 3개 탭. 솔로 및 협동 지원. F7로 토글, F6으로 위치 초기화.",
+        ["mod_description"] = "전투 중 플레이어별 딜량, 받은피해, 방어도, 카드 사용을 추적합니다. 미터/카드로그/받은피해 3개 탭. 솔로 및 협동 지원. 토글 키 설정 가능, F6으로 위치 초기화.",
+        ["mod_settings_title"] = "설정",
+        ["toggle_key_label"] = "토글 키",
+        ["toggle_key_current_fmt"] = "현재: {0}",
+        ["toggle_key_capture"] = "키 입력 대기...",
+        ["toggle_key_reset"] = "기본값",
+        ["toggle_key_reserved"] = "사용할 수 없는 키입니다.",
 
         ["exhaust_label"] = "소멸",
         ["exhaust_ethereal"] = "소멸(에테리얼)",
@@ -310,7 +323,13 @@ public static class L10N
         ["stat_per_combat_fmt"] = "Per combat: {0}",
 
         ["mod_name"] = "Damage Meter",
-        ["mod_description"] = "Tracks per-player damage dealt, received, block, and card usage during combat. 3 tabs: Meter, Card Log, Received Damage. Solo & co-op. F7 to toggle, F6 to reset position.",
+        ["mod_description"] = "Tracks per-player damage dealt, received, block, and card usage during combat. 3 tabs: Meter, Card Log, Received Damage. Solo & co-op. Configurable toggle key, F6 to reset position.",
+        ["mod_settings_title"] = "Settings",
+        ["toggle_key_label"] = "Toggle key",
+        ["toggle_key_current_fmt"] = "Current: {0}",
+        ["toggle_key_capture"] = "Press any key...",
+        ["toggle_key_reset"] = "Default",
+        ["toggle_key_reserved"] = "Reserved key.",
 
         ["exhaust_label"] = "Exhaust",
         ["exhaust_ethereal"] = "Exhaust(Ethereal)",

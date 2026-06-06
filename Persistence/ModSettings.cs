@@ -11,6 +11,7 @@ namespace DamageMeterMod.Persistence;
 public sealed class ModSettings
 {
     private const string SETTINGS_FILE = "user://damage_meter_settings.json";
+    public const Key DefaultToggleKey = Key.F7;
 
     // 패널 위치
     public float PanelX { get; set; } = 20f;
@@ -25,6 +26,7 @@ public sealed class ModSettings
     public bool IsMinimized { get; set; }
     public int ActiveTab { get; set; }
     public bool ShowRunTotal { get; set; }
+    public Key ToggleKey { get; set; } = DefaultToggleKey;
 
     // 업데이트 알림 dismiss 상태
     public string DismissedUpdateVersion { get; set; } = "";
@@ -35,6 +37,24 @@ public sealed class ModSettings
     // 싱글톤
     private static ModSettings? _current;
     public static ModSettings Current => _current ??= Load();
+
+    public Key GetToggleKey()
+    {
+        return IsValidToggleKey(ToggleKey) ? ToggleKey : DefaultToggleKey;
+    }
+
+    public static bool IsValidToggleKey(Key key)
+    {
+        return key != Key.None &&
+            key != Key.Escape &&
+            key != Key.F6 &&
+            key != Key.F8;
+    }
+
+    public static string FormatKey(Key key)
+    {
+        return key == Key.None ? "None" : key.ToString();
+    }
 
     public static ModSettings Load()
     {

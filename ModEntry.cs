@@ -45,7 +45,7 @@ public class ModEntry
             sceneTree.Root.CallDeferred("add_child", _overlay);
             Log("[DamageMeter] UI overlay added to scene tree.");
 
-            Log("[DamageMeter] Mod initialized successfully. Press F7 to toggle.");
+            Log($"[DamageMeter] Mod initialized successfully. Press {Persistence.ModSettings.FormatKey(Persistence.ModSettings.Current.GetToggleKey())} to toggle.");
 
             // 비동기 업데이트 확인 (fire-and-forget, 초기화 차단 안 함)
             _ = Core.UpdateChecker.CheckForUpdateAsync();

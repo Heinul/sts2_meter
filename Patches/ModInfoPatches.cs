@@ -1,6 +1,8 @@
 using System.Reflection;
+using Godot;
 using HarmonyLib;
 using DamageMeterMod.Core;
+using DamageMeterMod.Persistence;
 
 namespace DamageMeterMod.Patches;
 
@@ -14,8 +16,11 @@ namespace DamageMeterMod.Patches;
 ///
 /// 패치 후 id == "DamageMeterMod"인 경우에만 L10N 값으로 교체.
 /// </summary>
-public static class ModInfoPatches
+public static partial class ModInfoPatches
 {
+    private const string SettingsPanelName = "DamageMeterModSettingsPanel";
+    private const string CaptureLayerName = "DamageMeterModKeyCaptureLayer";
+
     // NModInfoContainer 필드 캐싱
     private static FieldInfo? _titleField;
     private static FieldInfo? _descField;
@@ -52,6 +57,9 @@ public static class ModInfoPatches
                     _fieldsResolved = true;
                 }
 
+                var root = __instance as Control;
+                RemoveSettingsUi(root);
+
                 // Mod.manifest 접근
                 var manifest = _manifestField?.GetValue(__0);
                 if (manifest == null) return;
@@ -79,6 +87,8 @@ public static class ModInfoPatches
                         L10N.ModDescription;
                     SetNodeText(descNode, composed);
                 }
+
+                AddSettingsUi(root, descNode);
 
                 ModEntry.LogDebug($"[DamageMeter] ModInfo localized: locale={L10N.Locale}");
             }
@@ -108,6 +118,182 @@ public static class ModInfoPatches
             $"title={_titleField != null}, desc={_descField != null}, " +
             $"manifest={_manifestField != null}, id={_idField != null}, " +
             $"author={_authorField != null}, version={_versionField != null}");
+    }
+
+    private static void RemoveSettingsUi(Control? root)
+    {
+        var existing = root?.FindChild(SettingsPanelName, true, false);
+        if (existing == null) return;
+
+        existing.GetParent()?.RemoveChild(existing);
+        existing.QueueFree();
+    }
+
+    private static void AddSettingsUi(Control? root, object? descNode)
+    {
+        if (root == null) return;
+
+        var settings = ModSettings.Current;
+        var panel = new VBoxContainer
+        {
+            Name = SettingsPanelName,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 72)
+        };
+        panel.AddThemeConstantOverride("separation", 6);
+
+        var title = new Label
+        {
+            Text = L10N.ModSettingsTitle,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        title.AddThemeFontSizeOverride("font_size", 14);
+        panel.AddChild(title);
+
+        var row = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        row.AddThemeConstantOverride("separation", 8);
+        panel.AddChild(row);
+
+        var label = new Label
+        {
+            Text = L10N.ToggleKeyLabel,
+            CustomMinimumSize = new Vector2(90, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        row.AddChild(label);
+
+        var keyButton = new Button
+        {
+            Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(settings.GetToggleKey())),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        keyButton.Pressed += () => StartKeyCapture(root, keyButton);
+        row.AddChild(keyButton);
+
+        var resetButton = new Button
+        {
+            Text = L10N.ToggleKeyReset,
+            CustomMinimumSize = new Vector2(84, 0)
+        };
+        resetButton.Pressed += () =>
+        {
+            settings.ToggleKey = ModSettings.DefaultToggleKey;
+            settings.Save();
+            keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(settings.GetToggleKey()));
+        };
+        row.AddChild(resetButton);
+
+        if (descNode is Node desc && desc.GetParent() is Container parentContainer)
+        {
+            parentContainer.AddChild(panel);
+            return;
+        }
+
+        root.AddChild(panel);
+        panel.AnchorLeft = 0f;
+        panel.AnchorRight = 1f;
+        panel.AnchorTop = 1f;
+        panel.AnchorBottom = 1f;
+        panel.OffsetLeft = 0f;
+        panel.OffsetRight = 0f;
+        panel.OffsetTop = -80f;
+        panel.OffsetBottom = 0f;
+    }
+
+    private static void StartKeyCapture(Control root, Button keyButton)
+    {
+        var sceneRoot = root.GetTree()?.Root;
+        if (sceneRoot == null) return;
+
+        var existing = sceneRoot.FindChild(CaptureLayerName, true, false);
+        if (existing != null)
+        {
+            existing.GetParent()?.RemoveChild(existing);
+            existing.QueueFree();
+        }
+
+        keyButton.Text = L10N.ToggleKeyCapture;
+
+        var captureLayer = new KeyCaptureLayer
+        {
+            Name = CaptureLayerName,
+            Captured = key =>
+            {
+                var settings = ModSettings.Current;
+                settings.ToggleKey = key;
+                settings.Save();
+                keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(settings.GetToggleKey()));
+            },
+            Cancelled = () =>
+            {
+                keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(ModSettings.Current.GetToggleKey()));
+            }
+        };
+
+        sceneRoot.AddChild(captureLayer);
+    }
+
+    private sealed partial class KeyCaptureLayer : CanvasLayer
+    {
+        public Action<Key>? Captured { get; init; }
+        public Action? Cancelled { get; init; }
+
+        private Label? _messageLabel;
+
+        public override void _Ready()
+        {
+            Layer = 1024;
+
+            var dimmer = new ColorRect
+            {
+                Color = new Color(0f, 0f, 0f, 0.45f),
+                AnchorRight = 1f,
+                AnchorBottom = 1f
+            };
+            AddChild(dimmer);
+
+            _messageLabel = new Label
+            {
+                Text = L10N.ToggleKeyCapture,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                AnchorLeft = 0.25f,
+                AnchorTop = 0.45f,
+                AnchorRight = 0.75f,
+                AnchorBottom = 0.55f
+            };
+            _messageLabel.AddThemeFontSizeOverride("font_size", 18);
+            AddChild(_messageLabel);
+        }
+
+        public override void _Input(InputEvent @event)
+        {
+            if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo)
+                return;
+
+            GetViewport().SetInputAsHandled();
+
+            var key = keyEvent.Keycode != Key.None ? keyEvent.Keycode : keyEvent.PhysicalKeycode;
+            if (key == Key.Escape)
+            {
+                Cancelled?.Invoke();
+                QueueFree();
+                return;
+            }
+
+            if (!ModSettings.IsValidToggleKey(key))
+            {
+                if (_messageLabel != null)
+                    _messageLabel.Text = L10N.ToggleKeyReserved;
+                return;
+            }
+
+            Captured?.Invoke(key);
+            QueueFree();
+        }
     }
 
     /// <summary>
