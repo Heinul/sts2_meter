@@ -121,6 +121,7 @@ public static class L10N
     public static string ToggleKeyCapture => Get("toggle_key_capture");
     public static string ToggleKeyReset => Get("toggle_key_reset");
     public static string ToggleKeyReserved => Get("toggle_key_reserved");
+    public static string ResetKeyLabel => Get("reset_key_label");
 
     // ===== 업데이트 알림 =====
     public static string UpdateAvailable(string version) =>
@@ -247,6 +248,7 @@ public static class L10N
         ["toggle_key_capture"] = "키 입력 대기...",
         ["toggle_key_reset"] = "기본값",
         ["toggle_key_reserved"] = "사용할 수 없는 키입니다.",
+        ["reset_key_label"] = "위치 초기화 키",
 
         ["exhaust_label"] = "소멸",
         ["exhaust_ethereal"] = "소멸(에테리얼)",
@@ -330,6 +332,7 @@ public static class L10N
         ["toggle_key_capture"] = "Press any key...",
         ["toggle_key_reset"] = "Default",
         ["toggle_key_reserved"] = "Reserved key.",
+        ["reset_key_label"] = "Reset position key",
 
         ["exhaust_label"] = "Exhaust",
         ["exhaust_ethereal"] = "Exhaust(Ethereal)",

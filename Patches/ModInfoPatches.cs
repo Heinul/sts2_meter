@@ -133,12 +133,11 @@ public static partial class ModInfoPatches
     {
         if (root == null) return;
 
-        var settings = ModSettings.Current;
         var panel = new VBoxContainer
         {
             Name = SettingsPanelName,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(0, 72)
+            CustomMinimumSize = new Vector2(0, 110)
         };
         panel.AddThemeConstantOverride("separation", 6);
 
@@ -150,41 +149,9 @@ public static partial class ModInfoPatches
         title.AddThemeFontSizeOverride("font_size", 14);
         panel.AddChild(title);
 
-        var row = new HBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-        };
-        row.AddThemeConstantOverride("separation", 8);
-        panel.AddChild(row);
-
-        var label = new Label
-        {
-            Text = L10N.ToggleKeyLabel,
-            CustomMinimumSize = new Vector2(90, 0),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        row.AddChild(label);
-
-        var keyButton = new Button
-        {
-            Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(settings.GetToggleKey())),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-        };
-        keyButton.Pressed += () => StartKeyCapture(root, keyButton);
-        row.AddChild(keyButton);
-
-        var resetButton = new Button
-        {
-            Text = L10N.ToggleKeyReset,
-            CustomMinimumSize = new Vector2(84, 0)
-        };
-        resetButton.Pressed += () =>
-        {
-            settings.ToggleKey = ModSettings.DefaultToggleKey;
-            settings.Save();
-            keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(settings.GetToggleKey()));
-        };
-        row.AddChild(resetButton);
+        // 토글 키 행 + 위치 초기화 키 행
+        panel.AddChild(MakeKeyRow(root, L10N.ToggleKeyLabel, isReset: false));
+        panel.AddChild(MakeKeyRow(root, L10N.ResetKeyLabel, isReset: true));
 
         if (descNode is Node desc && desc.GetParent() is Container parentContainer)
         {
@@ -199,11 +166,56 @@ public static partial class ModInfoPatches
         panel.AnchorBottom = 1f;
         panel.OffsetLeft = 0f;
         panel.OffsetRight = 0f;
-        panel.OffsetTop = -80f;
+        panel.OffsetTop = -118f;
         panel.OffsetBottom = 0f;
     }
 
-    private static void StartKeyCapture(Control root, Button keyButton)
+    /// <summary>키 바인딩 한 행 생성 (라벨 + 현재키 버튼 + 기본값 버튼).</summary>
+    private static HBoxContainer MakeKeyRow(Control root, string labelText, bool isReset)
+    {
+        var settings = ModSettings.Current;
+        Func<Key> getKey = isReset ? settings.GetResetKey : settings.GetToggleKey;
+
+        var row = new HBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        row.AddThemeConstantOverride("separation", 8);
+
+        var label = new Label
+        {
+            Text = labelText,
+            CustomMinimumSize = new Vector2(110, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        row.AddChild(label);
+
+        var keyButton = new Button
+        {
+            Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(getKey())),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        keyButton.Pressed += () => StartKeyCapture(root, keyButton, isReset);
+        row.AddChild(keyButton);
+
+        var resetButton = new Button
+        {
+            Text = L10N.ToggleKeyReset,
+            CustomMinimumSize = new Vector2(84, 0)
+        };
+        resetButton.Pressed += () =>
+        {
+            if (isReset) settings.ResetKey = ModSettings.DefaultResetKey;
+            else settings.ToggleKey = ModSettings.DefaultToggleKey;
+            settings.Save();
+            keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(getKey()));
+        };
+        row.AddChild(resetButton);
+
+        return row;
+    }
+
+    private static void StartKeyCapture(Control root, Button keyButton, bool isReset)
     {
         var sceneRoot = root.GetTree()?.Root;
         if (sceneRoot == null) return;
@@ -216,20 +228,23 @@ public static partial class ModInfoPatches
         }
 
         keyButton.Text = L10N.ToggleKeyCapture;
+        var settings = ModSettings.Current;
+        Func<Key> getKey = isReset ? settings.GetResetKey : settings.GetToggleKey;
 
         var captureLayer = new KeyCaptureLayer
         {
             Name = CaptureLayerName,
+            Validate = key => isReset ? settings.IsValidResetKey(key) : settings.IsValidToggleKey(key),
             Captured = key =>
             {
-                var settings = ModSettings.Current;
-                settings.ToggleKey = key;
+                if (isReset) settings.ResetKey = key;
+                else settings.ToggleKey = key;
                 settings.Save();
-                keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(settings.GetToggleKey()));
+                keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(getKey()));
             },
             Cancelled = () =>
             {
-                keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(ModSettings.Current.GetToggleKey()));
+                keyButton.Text = L10N.ToggleKeyCurrent(ModSettings.FormatKey(getKey()));
             }
         };
 
@@ -240,6 +255,7 @@ public static partial class ModInfoPatches
     {
         public Action<Key>? Captured { get; init; }
         public Action? Cancelled { get; init; }
+        public Func<Key, bool>? Validate { get; init; }
 
         private Label? _messageLabel;
 
@@ -284,7 +300,7 @@ public static partial class ModInfoPatches
                 return;
             }
 
-            if (!ModSettings.IsValidToggleKey(key))
+            if (Validate != null && !Validate(key))
             {
                 if (_messageLabel != null)
                     _messageLabel.Text = L10N.ToggleKeyReserved;

@@ -12,6 +12,7 @@ public sealed class ModSettings
 {
     private const string SETTINGS_FILE = "user://damage_meter_settings.json";
     public const Key DefaultToggleKey = Key.F7;
+    public const Key DefaultResetKey = Key.F6;
 
     // 패널 위치
     public float PanelX { get; set; } = 20f;
@@ -27,6 +28,7 @@ public sealed class ModSettings
     public int ActiveTab { get; set; }
     public bool ShowRunTotal { get; set; }
     public Key ToggleKey { get; set; } = DefaultToggleKey;
+    public Key ResetKey { get; set; } = DefaultResetKey;
 
     // 업데이트 알림 dismiss 상태
     public string DismissedUpdateVersion { get; set; } = "";
@@ -40,15 +42,30 @@ public sealed class ModSettings
 
     public Key GetToggleKey()
     {
-        return IsValidToggleKey(ToggleKey) ? ToggleKey : DefaultToggleKey;
+        return IsReservedKey(ToggleKey) ? DefaultToggleKey : ToggleKey;
     }
 
-    public static bool IsValidToggleKey(Key key)
+    public Key GetResetKey()
     {
-        return key != Key.None &&
-            key != Key.Escape &&
-            key != Key.F6 &&
-            key != Key.F8;
+        return IsReservedKey(ResetKey) ? DefaultResetKey : ResetKey;
+    }
+
+    /// <summary>항상 예약된 키 (바인딩 불가). None/Escape만.</summary>
+    public static bool IsReservedKey(Key key)
+    {
+        return key == Key.None || key == Key.Escape;
+    }
+
+    /// <summary>토글 키로 유효한지. 예약 아니고 리셋 키와 겹치지 않아야 함.</summary>
+    public bool IsValidToggleKey(Key key)
+    {
+        return !IsReservedKey(key) && key != GetResetKey();
+    }
+
+    /// <summary>리셋 키로 유효한지. 예약 아니고 토글 키와 겹치지 않아야 함.</summary>
+    public bool IsValidResetKey(Key key)
+    {
+        return !IsReservedKey(key) && key != GetToggleKey();
     }
 
     public static string FormatKey(Key key)

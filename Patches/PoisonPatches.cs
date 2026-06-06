@@ -52,10 +52,6 @@ public static class PoisonPatches
 
         if (_lastPoisonAmounts.TryGetValue(monsterKey, out int remainingPoison) && remainingPoison > 0)
         {
-#if DEBUG
-            PoisonDebugLogger.Log($"  [독 킬] {monsterName} 사망, 남은 독 {remainingPoison}스택 → 틱 데미지 기록");
-            PoisonDebugLogger.IncrementPoisonTick();
-#endif
             DamageTracker.Instance.RecordPoisonDamageTick(monsterKey, monsterName, remainingPoison);
             _lastPoisonAmounts.Remove(monsterKey);
 
@@ -105,10 +101,6 @@ public static class PoisonPatches
                     return;
                 if (power == null) return;
 
-#if DEBUG
-                PoisonDebugLogger.IncrementHookCall();
-                PoisonDebugLogger.LogAllPowerChanges(power, amount);
-#endif
 
                 // === 파워 이름 확인 (LocString → 로컬라이즈된 이름) ===
                 string powerName = CombatPatches.AfterDamageGivenPatch.GetLocStringText(power.Title)
@@ -116,46 +108,27 @@ public static class PoisonPatches
 
                 if (string.IsNullOrEmpty(powerName))
                 {
-#if DEBUG
-                    PoisonDebugLogger.LogPowerNameFilter("(empty)", false, "이름 비어있음");
-#endif
                     return;
                 }
 
                 bool isPoisonMatch = powerName.Contains("Poison", StringComparison.OrdinalIgnoreCase) ||
                     powerName.Contains("독", StringComparison.OrdinalIgnoreCase);
 
-#if DEBUG
-                PoisonDebugLogger.LogPowerNameFilter(powerName, isPoisonMatch,
-                    isPoisonMatch ? "Poison/독 포함" : "Poison/독 미포함");
-                if (isPoisonMatch)
-                    PoisonDebugLogger.IncrementPoisonMatch();
-#endif
 
                 if (!isPoisonMatch) return;
 
                 // === 파워 소유자(몬스터) 찾기 ===
                 var ownerCreature = power.Owner;
 
-#if DEBUG
-                PoisonDebugLogger.LogPowerAmountChanged(power, amount, applier,
-                    powerName, ownerCreature?.Name, ownerCreature?.IsMonster ?? false);
-#endif
 
                 if (ownerCreature == null)
                 {
                     ModEntry.LogDebug($"[DamageMeter] Poison PowerModel owner is null. Type: {power.GetType().FullName}");
-#if DEBUG
-                    PoisonDebugLogger.Log("  !! Owner가 null → 스킵");
-#endif
                     return;
                 }
 
                 if (!ownerCreature.IsMonster)
                 {
-#if DEBUG
-                    PoisonDebugLogger.Log($"  !! Owner가 몬스터가 아님 (IsPlayer={ownerCreature.IsPlayer}, IsPet={ownerCreature.IsPet}) → 스킵");
-#endif
                     return;
                 }
 
@@ -165,9 +138,6 @@ public static class PoisonPatches
                 // === 이전 수치와 비교 ===
                 int paramAmount = (int)amount;
                 int modelAmount = (int)power.Amount;
-#if DEBUG
-                PoisonDebugLogger.Log($"  !! 비교: amount(param)={paramAmount}, power.Amount(model)={modelAmount}");
-#endif
                 int currentAmount = modelAmount;
                 _lastPoisonAmounts.TryGetValue(monsterKey, out int oldAmount);
                 int diff = currentAmount - oldAmount;
@@ -178,9 +148,6 @@ public static class PoisonPatches
                 else
                     _lastPoisonAmounts[monsterKey] = currentAmount;
 
-#if DEBUG
-                PoisonDebugLogger.LogDiffCalculation(monsterKey, oldAmount, currentAmount, diff);
-#endif
 
                 ModEntry.LogDebug(
                     $"[DamageMeter] 독 변화: {monsterName} {oldAmount}→{currentAmount} (diff={diff}, applier={applier?.Name})");
@@ -191,53 +158,30 @@ public static class PoisonPatches
                     string applicantId = _lastActingPlayerId;
                     string applicantName = _lastActingPlayerName;
 
-#if DEBUG
-                    PoisonDebugLogger.Log($"  귀속 후보: lastActing={_lastActingPlayerId} ({_lastActingPlayerName}), applier={applier?.Name}");
-#endif
 
                     if (applier != null && applier.IsPlayer && applier.Player != null)
                     {
                         applicantId = applier.Player.NetId.ToString();
                         applicantName = applier.Name ?? applicantId;
-#if DEBUG
-                        PoisonDebugLogger.Log($"  → applier 파라미터 사용: {applicantId} ({applicantName})");
-#endif
                     }
                     else
                     {
-#if DEBUG
-                        PoisonDebugLogger.Log($"  → lastActingPlayer 사용: {applicantId} ({applicantName})");
-                        if (applier != null)
-                            PoisonDebugLogger.Log($"  (applier가 플레이어가 아님: IsPlayer={applier.IsPlayer}, Player={applier.Player})");
-                        else
-                            PoisonDebugLogger.Log("  (applier가 null)");
-#endif
                     }
 
                     if (!string.IsNullOrEmpty(applicantId))
                     {
                         DamageTracker.Instance.RecordPoisonApplied(monsterKey, applicantId, diff);
-#if DEBUG
-                        PoisonDebugLogger.IncrementPoisonApply();
-#endif
                         ModEntry.LogDebug(
                             $"[DamageMeter] 독 적용: {applicantName} → {monsterName} +{diff} ({currentAmount}스택)");
                     }
                     else
                     {
-#if DEBUG
-                        PoisonDebugLogger.Log("  !! applicantId가 비어있어 독 적용 스킵됨");
-#endif
                     }
                 }
                 else if (diff == -1 && oldAmount > 0)
                 {
                     // === 독 틱: 데미지 = 감소 전 수치 (oldAmount) ===
                     int poisonDamage = oldAmount;
-#if DEBUG
-                    PoisonDebugLogger.Log($"  독 틱 호출: monsterKey={monsterKey}, damage={poisonDamage}");
-                    PoisonDebugLogger.IncrementPoisonTick();
-#endif
                     DamageTracker.Instance.RecordPoisonDamageTick(monsterKey, monsterName, poisonDamage);
                     ModEntry.LogDebug(
                         $"[DamageMeter] 독 틱: {monsterName} {poisonDamage}뎀 (잔여 {currentAmount}스택)");
@@ -245,27 +189,17 @@ public static class PoisonPatches
                 else if (diff < -1)
                 {
                     int poisonDamage = oldAmount;
-#if DEBUG
-                    PoisonDebugLogger.Log($"  독 대량 감소: {oldAmount} → {currentAmount}, diff={diff} → 틱 데미지={poisonDamage}로 처리");
-                    PoisonDebugLogger.IncrementPoisonTick();
-#endif
                     DamageTracker.Instance.RecordPoisonDamageTick(monsterKey, monsterName, poisonDamage);
                     ModEntry.LogDebug(
                         $"[DamageMeter] 독 킬/대량감소: {monsterName} {poisonDamage}뎀 ({oldAmount}→{currentAmount})");
                 }
                 else if (diff == 0)
                 {
-#if DEBUG
-                    PoisonDebugLogger.Log("  diff=0 → 변화 없음, 아무 처리 안 함");
-#endif
                 }
             }
             catch (Exception ex)
             {
                 ModEntry.LogError($"[DamageMeter] AfterPowerAmountChanged error: {ex.Message}");
-#if DEBUG
-                PoisonDebugLogger.Log($"  !! 예외 발생: {ex}");
-#endif
             }
         }
 

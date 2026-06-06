@@ -80,10 +80,6 @@ public sealed class DamageTracker
     /// <summary>전투 시작 시 호출. 이전 전투 데이터를 누적에 합산 후 초기화.</summary>
     public void StartCombat(IEnumerable<(string id, string name)> players)
     {
-#if DEBUG
-        PoisonDebugLogger.Initialize();
-        PoisonDebugLogger.LogCombatEvent("StartCombat");
-#endif
 
         lock (_dataLock)
         {
@@ -415,13 +411,6 @@ public sealed class DamageTracker
             playerStacks.TryGetValue(playerId, out int existing);
             playerStacks[playerId] = existing + stacksAdded;
 
-#if DEBUG
-            // 귀속 테이블 스냅샷을 파일에 기록
-            var snapshot = new Dictionary<string, Dictionary<string, int>>();
-            foreach (var kvp in _poisonAttribution)
-                snapshot[kvp.Key] = new Dictionary<string, int>(kvp.Value);
-            PoisonDebugLogger.LogPoisonApplied(monsterKey, playerId, stacksAdded, snapshot);
-#endif
         }
     }
 
@@ -434,26 +423,17 @@ public sealed class DamageTracker
         {
             if (!_poisonAttribution.TryGetValue(monsterKey, out var playerStacks) || playerStacks.Count == 0)
             {
-#if DEBUG
-                PoisonDebugLogger.LogPoisonDamageTick(monsterKey, monsterName, totalPoisonDamage, null, null);
-#endif
                 return;
             }
 
             int totalStacks = playerStacks.Values.Sum();
             if (totalStacks <= 0)
             {
-#if DEBUG
-                PoisonDebugLogger.Log($"  !! totalStacks=0 for {monsterKey} → 스킵");
-#endif
                 return;
             }
 
             // 비율 귀속: 각 플레이어의 기여 스택 비율로 데미지 분배
             var sortedPlayers = playerStacks.OrderByDescending(kv => kv.Value).ToList();
-#if DEBUG
-            var damageShares = new Dictionary<string, int>();
-#endif
 
             for (int i = 0; i < sortedPlayers.Count; i++)
             {
@@ -473,9 +453,6 @@ public sealed class DamageTracker
 
                 if (share <= 0) continue;
 
-#if DEBUG
-                damageShares[playerId] = share;
-#endif
 
                 if (_records.TryGetValue(playerId, out var record))
                 {
@@ -502,11 +479,6 @@ public sealed class DamageTracker
                 });
             }
 
-#if DEBUG
-            PoisonDebugLogger.LogPoisonDamageTick(monsterKey, monsterName, totalPoisonDamage,
-                new Dictionary<string, int>(playerStacks), damageShares);
-            PoisonDebugLogger.LogRecordsState(new Dictionary<string, PlayerDamageRecord>(_records));
-#endif
         }
 
         OnDataChanged?.Invoke();
@@ -707,38 +679,6 @@ public sealed class DamageTracker
         get { lock (_dataLock) { return _runCombatCount + (IsActive ? 1 : 0); } }
     }
 
-#if DEBUG
-    /// <summary>디버그: 전체 독 추적 상태를 파일에 덤프. F8 키로 호출.</summary>
-    public string DumpPoisonDebugInfo()
-    {
-        lock (_dataLock)
-        {
-            PoisonDebugLogger.Section("=== F8 수동 덤프 ===");
-
-            // 플레이어별 독 데미지
-            PoisonDebugLogger.LogRecordsState(new Dictionary<string, PlayerDamageRecord>(_records));
-
-            // 독 귀속 테이블
-            PoisonDebugLogger.Section("Poison Attribution 전체");
-            if (_poisonAttribution.Count == 0)
-            {
-                PoisonDebugLogger.Log("  (비어 있음 — 독 적용이 기록되지 않았음)");
-            }
-            else
-            {
-                var snapshot = new Dictionary<string, Dictionary<string, int>>();
-                foreach (var kvp in _poisonAttribution)
-                    snapshot[kvp.Key] = new Dictionary<string, int>(kvp.Value);
-                PoisonDebugLogger.LogPoisonApplied("(전체 덤프)", "(전체)", 0, snapshot);
-            }
-
-            PoisonDebugLogger.Log($"  IsActive={IsActive}, Turn={CombatTurn}");
-            PoisonDebugLogger.Section("=== 덤프 완료 ===");
-
-            return $"독 디버그 로그가 파일에 기록됨: {PoisonDebugLogger.GetLogPath()}";
-        }
-    }
-#endif
 
     /// <summary>전체 초기화 (모드 언로드 시).</summary>
     public void Dispose()
