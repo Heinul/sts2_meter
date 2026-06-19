@@ -123,13 +123,6 @@ public static class L10N
     public static string ToggleKeyReserved => Get("toggle_key_reserved");
     public static string ResetKeyLabel => Get("reset_key_label");
 
-    // ===== 업데이트 알림 =====
-    public static string UpdateAvailable(string version) =>
-        string.Format(Get("update_available_fmt"), version);
-    public static string UpdateNexusMods => Get("update_nexusmods");
-    public static string UpdateGitHub => Get("update_github");
-    public static string UpdateDismiss => Get("update_dismiss");
-
     public static string StatThisTurn(string value) =>
         string.Format(Get("stat_this_turn_fmt"), value);
 
@@ -259,10 +252,6 @@ public static class L10N
         ["stat_doom_fmt"] = "종말: {0}",
         ["energy_cost_fmt"] = "({0})",
 
-        ["update_available_fmt"] = "새 버전 {0} 출시!",
-        ["update_nexusmods"] = "NexusMods",
-        ["update_github"] = "GitHub",
-        ["update_dismiss"] = "닫기",
     };
 
     private static Dictionary<string, string> EnglishStrings() => new()
@@ -343,9 +332,5 @@ public static class L10N
         ["stat_doom_fmt"] = "Doom: {0}",
         ["energy_cost_fmt"] = "({0})",
 
-        ["update_available_fmt"] = "Update {0} available!",
-        ["update_nexusmods"] = "NexusMods",
-        ["update_github"] = "GitHub",
-        ["update_dismiss"] = "Dismiss",
     };
 }
