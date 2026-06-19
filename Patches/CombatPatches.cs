@@ -327,8 +327,9 @@ public static class CombatPatches
         {
             try
             {
-                // v0.107.0: ICombatState 인터페이스로 변경됨. 런타임 객체는 CombatState이므로 캐스트.
-                var combatState = __1 as CombatState;
+                // 메이저 패치 후 combat-state 파라미터가 ICombatState 인터페이스로 통일됨.
+                // 구체 CombatState 대신 인터페이스로 캐스트 (구현체 무관하게 안전).
+                var combatState = __1 as ICombatState;
                 if (combatState == null) return;
 
                 // 런 변경 감지 (IRunState 참조 비교)
@@ -386,7 +387,7 @@ public static class CombatPatches
         ///   4) CombatState에서 LocalPlayerIndex 등 인덱스 기반 검색
         ///   5) fallback: 첫 번째 플레이어
         /// </summary>
-        private static void DetectLocalPlayer(CombatState combatState, List<(string id, string name)> playerList)
+        private static void DetectLocalPlayer(ICombatState combatState, List<(string id, string name)> playerList)
         {
             try
             {
