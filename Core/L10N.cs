@@ -76,6 +76,8 @@ public static class L10N
     public static string Poison => Get("poison");
     public static string Death => Get("death");
     public static string EffectLabel => Get("effect_label");
+    public static string HauntSource => Get("haunt_source");
+    public static string HauntTarget => Get("haunt_target");
 
     // ===== 포맷 메서드 =====
 
@@ -226,6 +228,8 @@ public static class L10N
         ["poison"] = "독",
         ["death"] = "사망",
         ["effect_label"] = "[효과]",
+        ["haunt_source"] = "출몰",
+        ["haunt_target"] = "무작위 적",
 
         ["toggle_combat"] = "이번 전투",
         ["toggle_run"] = "누적",
@@ -306,6 +310,8 @@ public static class L10N
         ["poison"] = "Poison",
         ["death"] = "Death",
         ["effect_label"] = "[Effect]",
+        ["haunt_source"] = "Haunt",
+        ["haunt_target"] = "Random enemy",
 
         ["toggle_combat"] = "This Combat",
         ["toggle_run"] = "Cumulative",
