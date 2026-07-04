@@ -873,10 +873,35 @@ public partial class DamageMeterOverlay : CanvasLayer
     // ----- 탭 0: 미터 -----
     private void RefreshMeterTab()
     {
+        ClearChildren(_meterRows);
+
+        // 핵심 훅 누락 = 게임 버전 비호환 → 빈 미터 대신 명확한 안내.
+        if (!ModEntry.IsCompatible)
+        {
+            var title = CreateLabel(L10N.CompatTitle, 13, new Color(1f, 0.45f, 0.4f));
+            title.HorizontalAlignment = HorizontalAlignment.Center;
+            title.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            _meterRows.AddChild(title);
+
+            var body = CreateLabel(L10N.CompatBody, 11, TextColor);
+            body.HorizontalAlignment = HorizontalAlignment.Center;
+            body.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            _meterRows.AddChild(body);
+
+            if (ModEntry.MissingCoreHooks.Count > 0)
+            {
+                var missing = CreateLabel(
+                    L10N.CompatMissing(string.Join(", ", ModEntry.MissingCoreHooks)), 9, SubTextColor);
+                missing.HorizontalAlignment = HorizontalAlignment.Center;
+                missing.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                _meterRows.AddChild(missing);
+            }
+            return;
+        }
+
         var snapshot = _showRunTotal
             ? DamageTracker.Instance.GetRunSnapshot()
             : DamageTracker.Instance.GetSnapshot();
-        ClearChildren(_meterRows);
 
         if (snapshot.Count == 0)
         {

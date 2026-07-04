@@ -71,6 +71,10 @@ public static class CombatPatches
     [HarmonyPatch]
     public static class AfterDamageGivenPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "AfterDamageGiven") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -307,6 +311,10 @@ public static class CombatPatches
     [HarmonyPatch]
     public static class BeforeCombatStartPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "BeforeCombatStart") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -540,6 +548,10 @@ public static class CombatPatches
     [HarmonyPatch]
     public static class AfterCombatEndPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "AfterCombatEnd") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -583,6 +595,10 @@ public static class CombatPatches
     [HarmonyPatch]
     public static class AfterCardPlayedPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "AfterCardPlayed") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -648,19 +664,30 @@ public static class CombatPatches
     [HarmonyPatch]
     public static class AfterTurnEndPatch
     {
+        // 베타에서 AfterTurnEnd → AfterSideTurnEnd로 개명됨. 양쪽 중 있는 것을 사용.
+        private static MethodBase? FindTarget()
+        {
+            var hookType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook");
+            if (hookType == null) return null;
+            return AccessTools.Method(hookType, "AfterSideTurnEnd")
+                ?? AccessTools.Method(hookType, "AfterTurnEnd");
+        }
+
+        // 훅이 없으면 이 패치만 조용히 스킵 (PatchAll 전체 중단 방지).
+        [HarmonyPrepare]
+        public static bool Prepare()
+        {
+            bool ok = FindTarget() != null;
+            if (!ok)
+                ModEntry.LogWarning("[DamageMeter] Hook.AfterSideTurnEnd/AfterTurnEnd not found — turn tracking disabled");
+            return ok;
+        }
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
-            var hookType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook");
-            if (hookType == null)
-                throw new InvalidOperationException("[DamageMeter] Hook type not found");
-
-            var method = AccessTools.Method(hookType, "AfterTurnEnd");
-            if (method == null)
-                throw new InvalidOperationException("[DamageMeter] Hook.AfterTurnEnd not found");
-
-            ModEntry.Log("[DamageMeter] Found Hook.AfterTurnEnd");
-            return method;
+            ModEntry.Log("[DamageMeter] Found Hook.AfterSideTurnEnd/AfterTurnEnd");
+            return FindTarget()!;
         }
 
         /// <summary>

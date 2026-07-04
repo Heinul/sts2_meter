@@ -1,3 +1,4 @@
+using System.Linq;
 using Godot;
 using HarmonyLib;
 using DamageMeterMod.Core;
@@ -21,35 +22,92 @@ namespace DamageMeterMod;
 public class ModEntry
 {
     private const string HARMONY_ID = "com.damagemeter.sts2";
-    public const string MOD_VERSION = "1.5.4";
+    public const string MOD_VERSION = "1.5.5";
 
     private static Harmony? _harmony;
     private static DamageMeterOverlay? _overlay;
     private static bool _debugMode = false;
+
+    // 데미지 측정에 필수인 핵심 훅 (label, 대체이름들). 하나라도 없으면 호환성 문제.
+    // 게임 빌드마다 훅이 개명될 수 있어 대체 이름 목록으로 확인.
+    private static readonly (string label, string[] names)[] CoreHooks =
+    {
+        ("AfterDamageGiven",    new[] { "AfterDamageGiven" }),
+        ("BeforeCombatStart",   new[] { "BeforeCombatStart" }),
+        ("AfterTurnEnd",        new[] { "AfterSideTurnEnd", "AfterTurnEnd" }),
+        ("AfterDamageReceived", new[] { "AfterDamageReceived" }),
+    };
+
+    /// <summary>발견되지 않은 핵심 훅 목록. 비어있으면 정상.</summary>
+    public static List<string> MissingCoreHooks { get; } = new();
+
+    /// <summary>핵심 훅이 모두 존재하면 true. false면 오버레이가 호환성 경고 표시.</summary>
+    public static bool IsCompatible => MissingCoreHooks.Count == 0;
 
     /// <summary>게임이 모드 로드 시 호출하는 static 진입점.</summary>
     public static void Initialize()
     {
         Log($"[DamageMeter] Initializing Damage Meter Mod v{MOD_VERSION}...");
 
+        // 핵심 훅 존재 여부 확인 — 하나라도 없으면 데미지 측정 불가.
+        // 오버레이가 이 결과로 "호환성 경고"를 표시(빈 미터 대신 명확한 안내).
+        CheckCompatibility();
+
+        // Harmony 패치 적용 — 일부 패치가 실패해도 UI는 뜨도록 별도 try.
+        // (게임 빌드마다 훅 시그니처/이름이 바뀔 수 있어, 패치 하나 실패가
+        //  오버레이 전체 실종으로 번지지 않게 분리.)
         try
         {
-            // Harmony 패치 적용
             _harmony = new Harmony(HARMONY_ID);
             _harmony.PatchAll(typeof(ModEntry).Assembly);
-            Log("[DamageMeter] All Harmony patches applied.");
-
-            // UI 오버레이를 씬 트리 루트에 추가 (deferred로 안전하게)
-            var sceneTree = (SceneTree)Engine.GetMainLoop();
-            _overlay = new DamageMeterOverlay();
-            sceneTree.Root.CallDeferred("add_child", _overlay);
-            Log("[DamageMeter] UI overlay added to scene tree.");
-
-            Log($"[DamageMeter] Mod initialized successfully. Press {Persistence.ModSettings.FormatKey(Persistence.ModSettings.Current.GetToggleKey())} to toggle.");
+            Log("[DamageMeter] Harmony patches applied.");
         }
         catch (Exception ex)
         {
-            LogError($"[DamageMeter] Failed to initialize: {ex}");
+            LogError($"[DamageMeter] PatchAll partial failure (UI still loads): {ex}");
+        }
+
+        // 패치 성공 여부와 무관하게 오버레이는 항상 생성.
+        try
+        {
+            var sceneTree = (SceneTree)Engine.GetMainLoop();
+            _overlay = new DamageMeterOverlay();
+            sceneTree.Root.CallDeferred("add_child", _overlay);
+            Log($"[DamageMeter] UI overlay added. Press {Persistence.ModSettings.FormatKey(Persistence.ModSettings.Current.GetToggleKey())} to toggle.");
+        }
+        catch (Exception ex)
+        {
+            LogError($"[DamageMeter] Failed to create overlay: {ex}");
+        }
+    }
+
+    /// <summary>핵심 훅 존재 확인. 없는 것을 MissingCoreHooks에 기록.</summary>
+    private static void CheckCompatibility()
+    {
+        MissingCoreHooks.Clear();
+        try
+        {
+            var hookType = AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook");
+            if (hookType == null)
+            {
+                MissingCoreHooks.Add("Hook type");
+                return;
+            }
+
+            foreach (var (label, names) in CoreHooks)
+            {
+                bool found = names.Any(n => AccessTools.Method(hookType, n) != null);
+                if (!found) MissingCoreHooks.Add(label);
+            }
+
+            if (IsCompatible)
+                Log("[DamageMeter] Compatibility OK — all core hooks found.");
+            else
+                LogWarning($"[DamageMeter] Incompatible with this game build. Missing hooks: {string.Join(", ", MissingCoreHooks)}");
+        }
+        catch (Exception ex)
+        {
+            LogError($"[DamageMeter] Compatibility check error: {ex.Message}");
         }
     }
 

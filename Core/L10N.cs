@@ -78,6 +78,9 @@ public static class L10N
     public static string EffectLabel => Get("effect_label");
     public static string HauntSource => Get("haunt_source");
     public static string HauntTarget => Get("haunt_target");
+    public static string CompatTitle => Get("compat_title");
+    public static string CompatBody => Get("compat_body");
+    public static string CompatMissing(string hooks) => string.Format(Get("compat_missing_fmt"), hooks);
 
     // ===== 포맷 메서드 =====
 
@@ -230,6 +233,9 @@ public static class L10N
         ["effect_label"] = "[효과]",
         ["haunt_source"] = "출몰",
         ["haunt_target"] = "무작위 적",
+        ["compat_title"] = "⚠ 호환되지 않는 게임 버전",
+        ["compat_body"] = "현재 게임 버전과 호환되지 않습니다.\n모드 업데이트를 기다려 주세요.",
+        ["compat_missing_fmt"] = "누락된 훅: {0}",
 
         ["toggle_combat"] = "이번 전투",
         ["toggle_run"] = "누적",
@@ -312,6 +318,9 @@ public static class L10N
         ["effect_label"] = "[Effect]",
         ["haunt_source"] = "Haunt",
         ["haunt_target"] = "Random enemy",
+        ["compat_title"] = "⚠ Incompatible game version",
+        ["compat_body"] = "This mod isn't compatible with your current game version.\nPlease wait for a mod update.",
+        ["compat_missing_fmt"] = "Missing hooks: {0}",
 
         ["toggle_combat"] = "This Combat",
         ["toggle_run"] = "Cumulative",

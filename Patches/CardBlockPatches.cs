@@ -35,6 +35,10 @@ public static class CardBlockPatches
     [HarmonyPatch]
     public static class AfterCardPlayedPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "AfterCardPlayed") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -173,6 +177,10 @@ public static class CardBlockPatches
     [HarmonyPatch]
     public static class AfterBlockGainedPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "AfterBlockGained") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {

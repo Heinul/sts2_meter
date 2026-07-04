@@ -34,6 +34,10 @@ public static class DamageReceivedPatches
     [HarmonyPatch]
     public static class AfterDamageReceivedPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "AfterDamageReceived") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
@@ -105,6 +109,10 @@ public static class DamageReceivedPatches
     [HarmonyPatch]
     public static class AfterDeathPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "AfterDeath") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {

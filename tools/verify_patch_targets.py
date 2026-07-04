@@ -22,7 +22,11 @@ REQUIRED_TARGETS = [
     ("Hook.AfterDamageGiven", b"MegaCrit.Sts2.Core.Hooks.Hook+<AfterDamageGiven>"),
     ("Hook.BeforeCombatStart", b"MegaCrit.Sts2.Core.Hooks.Hook+<BeforeCombatStart>"),
     ("Hook.AfterCombatEnd", b"MegaCrit.Sts2.Core.Hooks.Hook+<AfterCombatEnd>"),
-    ("Hook.AfterTurnEnd", b"MegaCrit.Sts2.Core.Hooks.Hook+<AfterTurnEnd>"),
+    # 베타에서 AfterTurnEnd → AfterSideTurnEnd로 개명됨. 둘 중 하나라도 있으면 OK.
+    ("Hook.AfterSideTurnEnd/AfterTurnEnd", (
+        b"MegaCrit.Sts2.Core.Hooks.Hook+<AfterSideTurnEnd>",
+        b"MegaCrit.Sts2.Core.Hooks.Hook+<AfterTurnEnd>",
+    )),
     ("CombatManager", b"MegaCrit.Sts2.Core.Combat.CombatManager"),
     ("PlayerId property", b"get_PlayerId"),
     ("ModManager", b"MegaCrit.Sts2.Core.Modding.ModManager"),
@@ -68,7 +72,8 @@ def main():
     print("\n[REQUIRED TARGETS]")
     all_ok = True
     for name, pattern in REQUIRED_TARGETS:
-        found = pattern in data
+        # pattern이 튜플이면 하나라도 있으면 OK (개명 대응)
+        found = any(p in data for p in pattern) if isinstance(pattern, tuple) else pattern in data
         status = "OK" if found else "MISSING"
         icon = "+" if found else "!"
         print(f"  [{icon}] {status:8s} {name}")

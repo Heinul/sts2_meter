@@ -65,6 +65,10 @@ public static class PoisonPatches
     [HarmonyPatch]
     public static class AfterPowerAmountChangedPatch
     {
+        [HarmonyPrepare]
+        public static bool Prepare() =>
+            AccessTools.Method(AccessTools.TypeByName("MegaCrit.Sts2.Core.Hooks.Hook"), "AfterPowerAmountChanged") != null;
+
         [HarmonyTargetMethod]
         public static MethodBase TargetMethod()
         {
