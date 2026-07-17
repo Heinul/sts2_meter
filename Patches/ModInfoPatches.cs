@@ -33,12 +33,23 @@ public static partial class ModInfoPatches
     [HarmonyPatch]
     public static class FillPatch
     {
+        private const string ContainerTypeName =
+            "MegaCrit.Sts2.Core.Nodes.Screens.ModdingScreen.NModInfoContainer";
+
+        // 타입/메서드가 없으면 이 패치만 스킵 (PatchAll 중단 방지).
+        [HarmonyPrepare]
+        public static bool Prepare()
+        {
+            bool ok = AccessTools.Method(AccessTools.TypeByName(ContainerTypeName), "Fill") != null;
+            if (!ok)
+                ModEntry.LogWarning("[DamageMeter] NModInfoContainer.Fill not found — mod info localization disabled");
+            return ok;
+        }
+
         [HarmonyTargetMethod]
         static MethodBase Target()
         {
-            var type = AccessTools.TypeByName(
-                "MegaCrit.Sts2.Core.Nodes.Screens.ModdingScreen.NModInfoContainer");
-            return AccessTools.Method(type, "Fill");
+            return AccessTools.Method(AccessTools.TypeByName(ContainerTypeName), "Fill");
         }
 
         /// <summary>
