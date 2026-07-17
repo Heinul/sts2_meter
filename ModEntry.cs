@@ -22,7 +22,7 @@ namespace DamageMeterMod;
 public class ModEntry
 {
     private const string HARMONY_ID = "com.damagemeter.sts2";
-    public const string MOD_VERSION = "1.5.5";
+    public const string MOD_VERSION = "1.5.6";
 
     private static Harmony? _harmony;
     private static DamageMeterOverlay? _overlay;
